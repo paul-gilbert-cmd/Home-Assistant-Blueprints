@@ -1,8 +1,8 @@
 blueprint:
   name: Tuya TS0042 Multi-Device Scene Switch ZHA with 8 Scenes
   description: >
-    Универсальный blueprint для Tuya TS0042 c интеракцией через ZHA.
-    Поддержка до 8 отдельных сцен, выбор устройства по IEEE.
+    Универсальный blueprint для Tuya TS0042 с интеграцией через ZHA.
+    Поддержка до 8 отдельных сцен, выбор устройств по IEEE.
   domain: automation
   input:
     devices:
@@ -65,9 +65,9 @@ trigger:
 condition:
   - condition: template
     value_template: >
-      {{ trigger.event.data.device_ieee in [d.strip() for d in blueprint.devices.split(',')] and
-         trigger.event.data.command in ['short', 'double', 'long'] and
-         trigger.event.data.endpoint_id in [1,2] }}
+      {{ trigger.event.data.device_ieee in [d.strip() for d in blueprint.devices.split(',')] and 
+         trigger.event.data.command in ['short', 'double', 'long'] and 
+         trigger.event.data.endpoint_id in [1, 2] }}
 
 action:
   - choose:
@@ -133,5 +133,6 @@ action:
     
       entity_id: !input input_select_entity
       option: "{{ states(!input input_select_entity).state }}"
+
 
 
