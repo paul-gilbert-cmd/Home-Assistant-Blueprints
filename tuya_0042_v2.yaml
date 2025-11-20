@@ -13,7 +13,7 @@ blueprint:
           multiline: true
     input_select_entity:
       name: Input Select для переключения сцен
-      description: input_select с перечисленными сценами
+      description: Input_select с перечисленными сценами
       selector:
         entity:
           domain: input_select
@@ -71,7 +71,6 @@ condition:
 
 action:
   - choose:
-      # Левая кнопка (endpoint_id=1)
       - conditions:
           - condition: template
             value_template: >
@@ -99,7 +98,6 @@ action:
             target:
               entity_id: !input scene_4
 
-      # Правая кнопка (endpoint_id=2)
       - conditions:
           - condition: template
             value_template: >
@@ -133,6 +131,7 @@ action:
     
       entity_id: !input input_select_entity
       option: "{{ states(!input input_select_entity).state }}"
+
 
 
 
