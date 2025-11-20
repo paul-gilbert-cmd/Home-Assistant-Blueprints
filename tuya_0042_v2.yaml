@@ -71,6 +71,7 @@ condition:
 
 action:
   - choose:
+      # Левая кнопка (endpoint_id=1)
       - conditions:
           - condition: template
             value_template: >
@@ -98,6 +99,7 @@ action:
             target:
               entity_id: !input scene_4
 
+      # Правая кнопка (endpoint_id=2)
       - conditions:
           - condition: template
             value_template: >
@@ -131,4 +133,5 @@ action:
     
       entity_id: !input input_select_entity
       option: "{{ states(!input input_select_entity).state }}"
+
 
