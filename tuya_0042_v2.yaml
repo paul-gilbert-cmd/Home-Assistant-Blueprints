@@ -1,37 +1,39 @@
 blueprint:
-  name: Tuya TS0042 Multi-Device Scene Switch with 8 Scenes Support
-  description: Универсальный blueprint для TS0042 с выбором устройств и до 8 сцен, поддержкой short, double и long press для обеих кнопок.
+  name: Tuya TS0042 Multi-Device Scene Switch ZHA with 8 Scenes
+  description: >
+    Универсальный blueprint для Tuya TS0042 c интеракцией через ZHA.
+    Поддержка до 8 отдельных сцен, выбор устройства по IEEE.
   domain: automation
   input:
     devices:
-      name: Устройства TS0042 (IEEE адреса)
+      name: Устройства TS0042 IEEE адреса
       description: Список IEEE адресов устройств Tuya TS0042 через запятую
       selector:
         text:
           multiline: true
     input_select_entity:
-      name: Input Select для выбора сцены
-      description: Input_select с перечисленными сценами
+      name: Input Select для переключения сцен
+      description: input_select с перечисленными сценами
       selector:
         entity:
           domain: input_select
     scene_1:
-      name: Сцена 1
+      name: Сцена 1 (короткое нажатие левая кнопка)
       selector:
         entity:
           domain: scene
     scene_2:
-      name: Сцена 2
+      name: Сцена 2 (короткое нажатие правая кнопка)
       selector:
         entity:
           domain: scene
     scene_3:
-      name: Сцена 3
+      name: Сцена 3 (длинное нажатие правая кнопка)
       selector:
         entity:
           domain: scene
     scene_4:
-      name: Сцена 4
+      name: Сцена 4 (длинное нажатие левая кнопка)
       selector:
         entity:
           domain: scene
@@ -46,12 +48,12 @@ blueprint:
         entity:
           domain: scene
     scene_7:
-      name: Сцена 7
+      name: Сцена 7 (длинное нажатие дополнительная для примера)
       selector:
         entity:
           domain: scene
     scene_8:
-      name: Сцена 8
+      name: Сцена 8 (длинное нажатие дополнительная для примера)
       selector:
         entity:
           domain: scene
@@ -63,7 +65,7 @@ trigger:
 condition:
   - condition: template
     value_template: >
-      {{ trigger.event.data.device_ieee in [d.strip() for d in (blueprint.devices.split(','))] and
+      {{ trigger.event.data.device_ieee in [d.strip() for d in blueprint.devices.split(',')] and
          trigger.event.data.command in ['short', 'double', 'long'] and
          trigger.event.data.endpoint_id in [1,2] }}
 
@@ -92,7 +94,7 @@ action:
         sequence:
           - service: scene.turn_on
             target:
-              entity_id: !input scene_8
+              entity_id: !input scene_4
 
       # Правая кнопка (endpoint_id=2)
       - conditions:
@@ -105,25 +107,6 @@ action:
 
       - conditions:
           - condition: template
-            value_template: "{{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'short' }}"
-        sequence:
-          - service: scene.turn_on
-            target:
-              entity_id: !input scene_2
+            value_template: "{{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command ==
 
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'long' }}"
-        sequence:
-          - service: scene.turn_on
-            target:
-              entity_id: !input scene_7
-
-  - delay: "00:00:01"
-
-  # Обновить input_select после переключения
-  - service: input_select.select_option
-    
-      entity_id: !input input_select_entity
-      option: "{{ states(!input input_select_entity).state }}"
 
