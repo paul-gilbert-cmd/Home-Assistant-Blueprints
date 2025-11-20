@@ -1,0 +1,96 @@
+blueprint:
+  name: Tuya TS0042 Multi-Device Scene Switch with ZHA - Full Button Support
+  description: Универсальный blueprint для TS0042 с выбором устройств и сцен, поддержкой short, double и long press по обеим кнопкам.
+  domain: automation
+  input:
+    devices:
+      name: Устройства TS0042 (IEEE адреса)
+      description: Список IEEE адресов устройств Tuya TS0042 через запятую
+      selector:
+        text:
+          multiline: true
+    input_select_entity:
+      name: Input Select для выбора сцены
+      description: Input_select с перечисленными сценами
+      selector:
+        entity:
+          domain: input_select
+    scenes:
+      name: Сцены
+      description: Список сцен для циклического переключения
+      selector:
+        entity:
+          domain: scene
+          multiple: true
+
+trigger:
+  - platform: event
+    event_type: zha_event
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.event.data.device_ieee in [d.strip() for d in (blueprint.devices.split(','))] and
+         trigger.event.data.command in ['short', 'double', 'long'] and
+         trigger.event.data.endpoint_id in [1,2] }}
+
+action:
+  - choose:
+      # Левая кнопка (endpoint_id=1)
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'double' }}"
+        sequence:
+          - service: input_select.select_next
+            target:
+              entity_id: !input input_select_entity
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'short' }}"
+        sequence:
+          - service: scene.turn_on
+            target:
+              entity_id: !input scenes[0]  # например, при коротком нажатии включаем первую сцену
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'long' }}"
+        sequence:
+          - service: scene.turn_on
+            target:
+              entity_id: !input scenes[-1]  # при длинном - последняя сцена (или любая другая логика)
+
+      # Правая кнопка (endpoint_id=2)
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'double' }}"
+        sequence:
+          - service: input_select.select_previous
+            target:
+              entity_id: !input input_select_entity
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'short' }}"
+        sequence:
+          - service: scene.turn_on
+            target:
+              entity_id: !input scenes[1]  # при коротком нажатии включаем вторую сцену
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'long' }}"
+        sequence:
+          - service: scene.turn_on
+            target:
+              entity_id: !input scenes[-2]  # при длинном - предпоследняя сцена (пример)
+
+  - delay: "00:00:01"
+
+  # Обновить input_select после переключения
+  - service: input_select.select_option
+    data_template:
+      entity_id: !input input_select_entity
+      option: >
+        {{ states(!input input_select_entity).state }}
