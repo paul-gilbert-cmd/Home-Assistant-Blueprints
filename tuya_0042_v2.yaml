@@ -1,6 +1,6 @@
 blueprint:
-  name: Tuya TS0042 Multi-Device Scene Switch with ZHA - Full Button Support
-  description: Универсальный blueprint для TS0042 с выбором устройств и сцен, поддержкой short, double и long press по обеим кнопкам.
+  name: Tuya TS0042 Multi-Device Scene Switch with 8 Scenes Support
+  description: Универсальный blueprint для TS0042 с выбором устройств и до 8 сцен, поддержкой short, double и long press для обеих кнопок.
   domain: automation
   input:
     devices:
@@ -15,13 +15,46 @@ blueprint:
       selector:
         entity:
           domain: input_select
-    scenes:
-      name: Сцены
-      description: Список сцен для циклического переключения
+    scene_1:
+      name: Сцена 1
       selector:
         entity:
           domain: scene
-          multiple: true
+    scene_2:
+      name: Сцена 2
+      selector:
+        entity:
+          domain: scene
+    scene_3:
+      name: Сцена 3
+      selector:
+        entity:
+          domain: scene
+    scene_4:
+      name: Сцена 4
+      selector:
+        entity:
+          domain: scene
+    scene_5:
+      name: Сцена 5
+      selector:
+        entity:
+          domain: scene
+    scene_6:
+      name: Сцена 6
+      selector:
+        entity:
+          domain: scene
+    scene_7:
+      name: Сцена 7
+      selector:
+        entity:
+          domain: scene
+    scene_8:
+      name: Сцена 8
+      selector:
+        entity:
+          domain: scene
 
 trigger:
   - platform: event
@@ -51,7 +84,7 @@ action:
         sequence:
           - service: scene.turn_on
             target:
-              entity_id: !input scenes[0]  # например, при коротком нажатии включаем первую сцену
+              entity_id: !input scene_1
 
       - conditions:
           - condition: template
@@ -59,7 +92,7 @@ action:
         sequence:
           - service: scene.turn_on
             target:
-              entity_id: !input scenes[-1]  # при длинном - последняя сцена (или любая другая логика)
+              entity_id: !input scene_8
 
       # Правая кнопка (endpoint_id=2)
       - conditions:
@@ -76,7 +109,7 @@ action:
         sequence:
           - service: scene.turn_on
             target:
-              entity_id: !input scenes[1]  # при коротком нажатии включаем вторую сцену
+              entity_id: !input scene_2
 
       - conditions:
           - condition: template
@@ -84,13 +117,13 @@ action:
         sequence:
           - service: scene.turn_on
             target:
-              entity_id: !input scenes[-2]  # при длинном - предпоследняя сцена (пример)
+              entity_id: !input scene_7
 
   - delay: "00:00:01"
 
   # Обновить input_select после переключения
   - service: input_select.select_option
-    data_template:
+    
       entity_id: !input input_select_entity
-      option: >
-        {{ states(!input input_select_entity).state }}
+      option: "{{ states(!input input_select_entity).state }}"
+
