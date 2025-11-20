@@ -48,12 +48,12 @@ blueprint:
         entity:
           domain: scene
     scene_7:
-      name: Сцена 7 (длинное нажатие дополнительная для примера)
+      name: Сцена 7 (дополнительная для примера)
       selector:
         entity:
           domain: scene
     scene_8:
-      name: Сцена 8 (длинное нажатие дополнительная для примера)
+      name: Сцена 8 (дополнительная для примера)
       selector:
         entity:
           domain: scene
@@ -127,6 +127,3 @@ action:
     
       entity_id: !input input_select_entity
       option: "{{ states(!input input_select_entity).state }}"
-
-
-
