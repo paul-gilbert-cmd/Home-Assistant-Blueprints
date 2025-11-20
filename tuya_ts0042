@@ -1,0 +1,62 @@
+blueprint:
+  name: Tuya TS0042 Scene Switch Cyclic Scene Selector with Double Press
+  description: Универсальный blueprint для TS0042 с переключением сцен вперед/назад по двойному нажатию и выбором устройства
+  domain: automation
+  input:
+    device:
+      name: TS0042 Switch
+      description: Устройство Tuya TS0042
+      selector:
+        device:
+          integration: zha  # Или zigbee2mqtt, подставьте свою интеграцию
+          manufacturer: Tuya
+          model: TS0042
+    input_select_entity:
+      name: Input Select
+      description: Input_select с перечислением сцен для переключения
+      selector:
+        entity:
+          domain: input_select
+
+trigger:
+  - platform: event
+    event_type: zha_event  # Или zigbee2mqtt_event
+    event_
+      device_ieee: !input device
+      command: double
+      endpoint_id: 1  # Левая кнопка
+  - platform: event
+    event_type: zha_event
+    event_
+      device_ieee: !input device
+      command: double
+      endpoint_id: 2  # Правая кнопка
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.endpoint_id == 1 }}"
+        sequence:
+          - service: input_select.select_next
+            target:
+              entity_id: !input input_select_entity
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.endpoint_id == 2 }}"
+        sequence:
+          - service: input_select.select_previous
+            target:
+              entity_id: !input input_select_entity
+
+  - delay: "00:00:01"
+
+  - service: scene.turn_on
+    target:
+      entity_id: >
+        {% set current = states(input_select_entity) %}
+        {% set options = state_attr(input_select_entity, 'options') %}
+        {% set current_index = options.index(current) if current in options else 0 %}
+        {% set scenes = [ 'scene.scene_1', 'scene.scene_2', 'scene.scene_3' ] %}  # Замените на свои сцены
+        {{ scenes[current_index] }}
