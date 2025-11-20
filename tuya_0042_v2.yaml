@@ -71,10 +71,10 @@ condition:
 
 action:
   - choose:
-      # Левая кнопка (endpoint_id=1)
       - conditions:
           - condition: template
-            value_template: "{{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'double' }}"
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'double' }}
         sequence:
           - service: input_select.select_next
             target:
@@ -82,7 +82,8 @@ action:
 
       - conditions:
           - condition: template
-            value_template: "{{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'short' }}"
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'short' }}
         sequence:
           - service: scene.turn_on
             target:
@@ -90,16 +91,17 @@ action:
 
       - conditions:
           - condition: template
-            value_template: "{{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'long' }}"
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'long' }}
         sequence:
           - service: scene.turn_on
             target:
               entity_id: !input scene_4
 
-      # Правая кнопка (endpoint_id=2)
       - conditions:
           - condition: template
-            value_template: "{{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'double' }}"
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'double' }}
         sequence:
           - service: input_select.select_previous
             target:
@@ -107,7 +109,8 @@ action:
 
       - conditions:
           - condition: template
-            value_template: "{{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'short' }}"
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'short' }}
         sequence:
           - service: scene.turn_on
             target:
@@ -115,7 +118,8 @@ action:
 
       - conditions:
           - condition: template
-            value_template: "{{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'long' }}"
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'long' }}
         sequence:
           - service: scene.turn_on
             target:
@@ -127,3 +131,4 @@ action:
     
       entity_id: !input input_select_entity
       option: "{{ states(!input input_select_entity).state }}"
+
