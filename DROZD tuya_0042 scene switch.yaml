@@ -3,12 +3,11 @@ blueprint:
   description: Автоматизация для 2 button Scene Switch Tuya TS0042
   domain: automation
   input:
-    ts0042_device:
-      name: Выберите устройство
-      description: Tuya TS0042 на Zigbee через ZHA
+    ieee_address:
+      name: IEEE устройства
+      description: IEEE вашего Tuya TS0042 (пример: 70:C5:9C:FF:FE:36:5A:DA)
       selector:
-        device:
-          integration: zha
+        text:
     light_left:
       name: Левая клавиша одиночное нажатие
       selector:
@@ -43,12 +42,10 @@ blueprint:
 trigger:
   - platform: event
     event_type: zha_event
+    event_
+      device_ieee: !input ieee_address
 
-condition:
-  - condition: device
-    device_id: !input ts0042_device
-    domain: zha
-    type: zha_event
+condition: []
 
 action:
   - choose:
@@ -107,4 +104,3 @@ action:
           - service: input_boolean.toggle
             target:
               entity_id: !input boolean_right
-
