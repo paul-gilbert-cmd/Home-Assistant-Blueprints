@@ -42,7 +42,7 @@ blueprint:
 trigger:
   - platform: event
     event_type: zha_event
-    event_:
+    event_
       device_ieee: !input ieee_address
 
 condition: []
