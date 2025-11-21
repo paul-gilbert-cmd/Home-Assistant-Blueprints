@@ -62,7 +62,7 @@ action:
             target:
               entity_id: !input light_left
 
-      # Левая клавиша — двойное нажатие (переключить и активировать)
+      # Левая клавиша — двойное нажатие
       - conditions:
           - condition: template
             value_template: >
@@ -75,7 +75,7 @@ action:
               milliseconds: 300
           - service: homeassistant.turn_on
             
-              entity_id: "{{ states(!input 'scenes_left') }}"
+              entity_id: "{{ states(!input scenes_left) }}"
 
       # Левая клавиша — долгое нажатие
       - conditions:
@@ -97,7 +97,7 @@ action:
             target:
               entity_id: !input light_right
 
-      # Правая клавиша — двойное нажатие (переключить и активировать)
+      # Правая клавиша — двойное нажатие
       - conditions:
           - condition: template
             value_template: >
@@ -110,7 +110,7 @@ action:
               milliseconds: 300
           - service: homeassistant.turn_on
             
-              entity_id: "{{ states(!input 'scenes_right') }}"
+              entity_id: "{{ states(!input scenes_right) }}"
 
       # Правая клавиша — долгое нажатие
       - conditions:
