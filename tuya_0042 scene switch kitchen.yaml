@@ -1,0 +1,116 @@
+blueprint:
+  name: Tuya TS0042 Kitchen Scene Switch Custom
+  description: Автоматизация для Tuya TS0042 на кухне с двумя клавишами
+  domain: automation
+  input:
+    ieee_address:
+      name: IEEE устройства
+      description: Адрес вашего устройства Tuya TS0042
+      default: "70:C5:9C:FF:FE:36:5A:DA"
+      selector:
+        text:
+    light_left:
+      name: Левый свет
+      default: "light.kukhnia_vykliuchatel_left"
+      selector:
+        entity:
+          domain: light
+    light_right:
+      name: Правый свет
+      default: "light.kukhnia_vykliuchatel_right"
+      selector:
+        entity:
+          domain: light
+    scenes_left:
+      name: Сцены левой клавиши (input_select)
+      default: "input_select.kukhnia_light_scenes"
+      selector:
+        entity:
+          domain: input_select
+    scenes_right:
+      name: Сцены правой клавиши (input_select)
+      default: "input_select.kukhnia_podsvetka_scenes"
+      selector:
+        entity:
+          domain: input_select
+    boolean_left:
+      name: Долгое нажатие левая (input_boolean)
+      default: "input_boolean.diskoteka_kukhnia_svet"
+      selector:
+        entity:
+          domain: input_boolean
+    boolean_right:
+      name: Долгое нажатие правая (input_boolean)
+      default: "input_boolean.diskoteka_kukhnia_podsvetka"
+      selector:
+        entity:
+          domain: input_boolean
+
+trigger:
+  - platform: event
+    event_type: zha_event
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.event.data.device_ieee == blueprint.ieee_address and
+         trigger.event.data.command in ['single', 'double', 'long'] and
+         trigger.event.data.endpoint_id in [1, 2] }}
+
+action:
+  - choose:
+      # Левая клавиша
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'single' }}
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input light_left
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'double' }}
+        sequence:
+          - service: input_select.select_next
+            target:
+              entity_id: !input scenes_left
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'long' }}
+        sequence:
+          - service: input_boolean.toggle
+            target:
+              entity_id: !input boolean_left
+
+      # Правая клавиша
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'single' }}
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input light_right
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'double' }}
+        sequence:
+          - service: input_select.select_next
+            target:
+              entity_id: !input scenes_right
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'long' }}
+        sequence:
+          - service: input_boolean.toggle
+            target:
+              entity_id: !input boolean_right
