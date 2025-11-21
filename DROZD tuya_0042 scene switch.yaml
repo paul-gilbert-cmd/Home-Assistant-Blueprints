@@ -46,7 +46,7 @@ trigger:
 condition:
   - condition: template
     value_template: >
-      {{ trigger.event.data.device_ieee == (!input ieee_address) and
+      {{ trigger.event.data.device_ieee == states('input_text.ts0042_ieee_temp') and
          trigger.event.data.command in ['single', 'double', 'long'] and
          trigger.event.data.endpoint_id in [1, 2] }}
 
@@ -105,4 +105,3 @@ action:
           - service: input_boolean.toggle
             target:
               entity_id: !input boolean_right
-
