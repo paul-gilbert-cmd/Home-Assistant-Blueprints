@@ -1,5 +1,5 @@
 blueprint:
-  name: Tuya TS0042 Kitchen Scene Switch (Device Select)
+  name: DROZD Scene Switch Tuya TS0042
   description: Автоматизация для 2 button Scene Switch Tuya TS0042
   domain: automation
   input:
