@@ -18,16 +18,16 @@ blueprint:
       selector:
         entity:
           domain: light
-    scene_left:
-      name: Сцены левой клавиши - двойное нажатие (выбрать сцену)
+    scenes_left:
+      name: Сцены левой клавиши - двойное нажатие (input_select)
       selector:
         entity:
-          domain: scene
-    scene_right:
-      name: Сцены правой клавиши - двойное нажатие (выбрать сцену)
+          domain: input_select
+    scenes_right:
+      name: Сцены правой клавиши - двойное нажатие (input_select)
       selector:
         entity:
-          domain: scene
+          domain: input_select
     boolean_left:
       name: Долгое нажатие левая клавиша (input_boolean)
       selector:
@@ -52,7 +52,7 @@ condition:
 
 action:
   - choose:
-      # Левая клавиша — одиночное нажатие (включить/выключить свет)
+      # Левая клавиша — одиночное нажатие
       - conditions:
           - condition: template
             value_template: >
@@ -62,17 +62,22 @@ action:
             target:
               entity_id: !input light_left
 
-      # Левая клавиша — двойное нажатие (активировать сцену)
+      # Левая клавиша — двойное нажатие (переключить сцену)
       - conditions:
           - condition: template
             value_template: >
               {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'remote_button_double_press' }}
         sequence:
+          - service: input_select.select_next
+            target:
+              entity_id: !input scenes_left
+          - delay:
+              milliseconds: 200
           - service: scene.turn_on
             target:
-              entity_id: !input scene_left
+              entity_id: "{{ 'scene.' + states(!input 'scenes_left').lower().replace(' ', '_').replace('ё', 'yo').replace('й', 'y').replace('ц', 'c').replace('у', 'u').replace('к', 'k').replace('е', 'e').replace('н', 'n').replace('г', 'g').replace('ш', 'sh').replace('щ', 'sch').replace('з', 'z').replace('х', 'h').replace('ъ', '') .replace('ф', 'f').replace('ы', 'y').replace('в', 'v').replace('а', 'a').replace('п', 'p').replace('р', 'r').replace('о', 'o').replace('л', 'l').replace('д', 'd').replace('ж', 'zh').replace('э', 'e').replace('я', 'ya').replace('ч', 'ch').replace('с', 's').replace('м', 'm').replace('и', 'i').replace('т', 't').replace('ь', '') }}"
 
-      # Левая клавиша — долгое нажатие (переключить boolean)
+      # Левая клавиша — долгое нажатие
       - conditions:
           - condition: template
             value_template: >
@@ -82,7 +87,7 @@ action:
             target:
               entity_id: !input boolean_left
 
-      # Правая клавиша — одиночное нажатие (включить/выключить свет)
+      # Правая клавиша — одиночное нажатие
       - conditions:
           - condition: template
             value_template: >
@@ -92,17 +97,22 @@ action:
             target:
               entity_id: !input light_right
 
-      # Правая клавиша — двойное нажатие (активировать сцену)
+      # Правая клавиша — двойное нажатие (переключить сцену)
       - conditions:
           - condition: template
             value_template: >
               {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'remote_button_double_press' }}
         sequence:
+          - service: input_select.select_next
+            target:
+              entity_id: !input scenes_right
+          - delay:
+              milliseconds: 200
           - service: scene.turn_on
             target:
-              entity_id: !input scene_right
+              entity_id: "{{ 'scene.' + states(!input 'scenes_right').lower().replace(' ', '_').replace('ё', 'yo').replace('й', 'y').replace('ц', 'c').replace('у', 'u').replace('к', 'k').replace('е', 'e').replace('н', 'n').replace('г', 'g').replace('ш', 'sh').replace('щ', 'sch').replace('з', 'z').replace('х', 'h').replace('ъ', '').replace('ф', 'f').replace('ы', 'y').replace('в', 'v').replace('а', 'a').replace('п', 'p').replace('р', 'r').replace('о', 'o').replace('л', 'l').replace('д', 'd').replace('ж', 'zh').replace('э', 'e').replace('я', 'ya').replace('ч', 'ch').replace('с', 's').replace('м', 'm').replace('и', 'i').replace('т', 't').replace('ь', '') }}"
 
-      # Правая клавиша — долгое нажатие (переключить boolean)
+      # Правая клавиша — долгое нажатие
       - conditions:
           - condition: template
             value_template: >
