@@ -18,16 +18,16 @@ blueprint:
       selector:
         entity:
           domain: light
-    scenes_left:
-      name: Сцены левой клавиши - двойное нажатие (input_select)
+    scene_left:
+      name: Сцены левой клавиши - двойное нажатие (выбрать сцену)
       selector:
         entity:
-          domain: input_select
-    scenes_right:
-      name: Сцены правой клавиши - двойное нажатие (input_select)
+          domain: scene
+    scene_right:
+      name: Сцены правой клавиши - двойное нажатие (выбрать сцену)
       selector:
         entity:
-          domain: input_select
+          domain: scene
     boolean_left:
       name: Долгое нажатие левая клавиша (input_boolean)
       selector:
@@ -52,7 +52,7 @@ condition:
 
 action:
   - choose:
-      # Левая клавиша — одиночное нажатие
+      # Левая клавиша — одиночное нажатие (включить/выключить свет)
       - conditions:
           - condition: template
             value_template: >
@@ -62,22 +62,17 @@ action:
             target:
               entity_id: !input light_left
 
-      # Левая клавиша — двойное нажатие (переключить сцену И активировать)
+      # Левая клавиша — двойное нажатие (активировать сцену)
       - conditions:
           - condition: template
             value_template: >
               {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'remote_button_double_press' }}
         sequence:
-          - service: input_select.select_next
-            target:
-              entity_id: !input scenes_left
-          - delay:
-              milliseconds: 100
           - service: scene.turn_on
             target:
-              entity_id: "{{ states(!input scenes_left) }}"
+              entity_id: !input scene_left
 
-      # Левая клавиша — долгое нажатие
+      # Левая клавиша — долгое нажатие (переключить boolean)
       - conditions:
           - condition: template
             value_template: >
@@ -87,7 +82,7 @@ action:
             target:
               entity_id: !input boolean_left
 
-      # Правая клавиша — одиночное нажатие
+      # Правая клавиша — одиночное нажатие (включить/выключить свет)
       - conditions:
           - condition: template
             value_template: >
@@ -97,22 +92,17 @@ action:
             target:
               entity_id: !input light_right
 
-      # Правая клавиша — двойное нажатие (переключить сцену И активировать)
+      # Правая клавиша — двойное нажатие (активировать сцену)
       - conditions:
           - condition: template
             value_template: >
               {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'remote_button_double_press' }}
         sequence:
-          - service: input_select.select_next
-            target:
-              entity_id: !input scenes_right
-          - delay:
-              milliseconds: 100
           - service: scene.turn_on
             target:
-              entity_id: "{{ states(!input scenes_right) }}"
+              entity_id: !input scene_right
 
-      # Правая клавиша — долгое нажатие
+      # Правая клавиша — долгое нажатие (переключить boolean)
       - conditions:
           - condition: template
             value_template: >
