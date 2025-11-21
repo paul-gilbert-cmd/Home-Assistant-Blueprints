@@ -46,61 +46,67 @@ trigger:
 condition:
   - condition: template
     value_template: >
-      {{ trigger.event.data.device_ieee == states('input_text.ts0042_ieee_temp') and
-         trigger.event.data.command in ['single', 'double', 'long'] and
+      {{ trigger.event.data.device_ieee == '70:c5:9c:ff:fe:36:5a:da' and
+         trigger.event.data.command in ['remote_button_short_press', 'remote_button_double_press', 'remote_button_long_press'] and
          trigger.event.data.endpoint_id in [1, 2] }}
 
 action:
   - choose:
+      # Левая клавиша — одиночное нажатие
       - conditions:
           - condition: template
             value_template: >
-              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'single' }}
+              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'remote_button_short_press' }}
         sequence:
           - service: light.toggle
             target:
               entity_id: !input light_left
 
+      # Левая клавиша — двойное нажатие
       - conditions:
           - condition: template
             value_template: >
-              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'double' }}
+              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'remote_button_double_press' }}
         sequence:
           - service: input_select.select_next
             target:
               entity_id: !input scenes_left
 
+      # Левая клавиша — долгое нажатие
       - conditions:
           - condition: template
             value_template: >
-              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'long' }}
+              {{ trigger.event.data.endpoint_id == 1 and trigger.event.data.command == 'remote_button_long_press' }}
         sequence:
           - service: input_boolean.toggle
             target:
               entity_id: !input boolean_left
 
+      # Правая клавиша — одиночное нажатие
       - conditions:
           - condition: template
             value_template: >
-              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'single' }}
+              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'remote_button_short_press' }}
         sequence:
           - service: light.toggle
             target:
               entity_id: !input light_right
 
+      # Правая клавиша — двойное нажатие
       - conditions:
           - condition: template
             value_template: >
-              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'double' }}
+              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'remote_button_double_press' }}
         sequence:
           - service: input_select.select_next
             target:
               entity_id: !input scenes_right
 
+      # Правая клавиша — долгое нажатие
       - conditions:
           - condition: template
             value_template: >
-              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'long' }}
+              {{ trigger.event.data.endpoint_id == 2 and trigger.event.data.command == 'remote_button_long_press' }}
         sequence:
           - service: input_boolean.toggle
             target:
