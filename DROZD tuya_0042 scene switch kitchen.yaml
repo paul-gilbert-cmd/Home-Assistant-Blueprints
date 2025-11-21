@@ -1,43 +1,41 @@
 blueprint:
   name: Tuya TS0042 Kitchen Scene Switch (Device Select)
-  description: Автоматизация для Tuya TS0042 на кухне с выбором устройства из списка
+  description: Автоматизация для 2 button Scene Switch Tuya TS0042
   domain: automation
   input:
     ts0042_device:
-      name: Выберите устройство Tuya TS0042
-      description: Устройство сцены Tuya TS0042 на Zigbee через ZHA
+      name: Выберите устройство
+      description: Tuya TS0042 на Zigbee через ZHA
       selector:
         device:
           integration: zha
-          manufacturer: TuYa
-          model: TS0042
     light_left:
-      name: Левый свет
+      name: Левая клавиша одиночное нажатие
       selector:
         entity:
           domain: light
     light_right:
-      name: Правый свет
+      name: Правая клавиша одиночное нажатие
       selector:
         entity:
           domain: light
     scenes_left:
-      name: Сцены левой клавиши (input_select)
+      name: Сцены левой клавиши - двойное нажатие (input_select)
       selector:
         entity:
           domain: input_select
     scenes_right:
-      name: Сцены правой клавиши (input_select)
+      name: Сцены правой клавиши - двойное нажатие (input_select)
       selector:
         entity:
           domain: input_select
     boolean_left:
-      name: Долгое нажатие левая (input_boolean)
+      name: Долгое нажатие левая клавиша (input_boolean)
       selector:
         entity:
           domain: input_boolean
     boolean_right:
-      name: Долгое нажатие правая (input_boolean)
+      name: Долгое нажатие правая клавиша (input_boolean)
       selector:
         entity:
           domain: input_boolean
