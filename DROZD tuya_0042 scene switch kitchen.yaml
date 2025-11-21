@@ -47,7 +47,7 @@ trigger:
 condition:
   - condition: template
     value_template: >
-      {{ trigger.event.data.device_ieee == device_registry.devices[!input ts0042_device].identifiers[0][1] and
+      {{ trigger.event.data.device_ieee == state_attr(!input ts0042_device, 'ieee') and
          trigger.event.data.command in ['single', 'double', 'long'] and
          trigger.event.data.endpoint_id in [1, 2] }}
 
