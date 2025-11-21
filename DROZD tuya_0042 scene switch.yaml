@@ -5,7 +5,7 @@ blueprint:
   input:
     ieee_address:
       name: IEEE устройства
-      description: IEEE вашего Tuya TS0042 (пример: 70:C5:9C:FF:FE:36:5A:DA)
+      description: IEEE вашего Tuya TS0042
       selector:
         text:
     light_left:
