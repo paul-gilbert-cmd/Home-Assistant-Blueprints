@@ -62,7 +62,7 @@ action:
             target:
               entity_id: !input light_left
 
-      # Левая клавиша — двойное нажатие (переключить сцену)
+      # Левая клавиша — двойное нажатие (переключить и активировать)
       - conditions:
           - condition: template
             value_template: >
@@ -72,10 +72,10 @@ action:
             target:
               entity_id: !input scenes_left
           - delay:
-              milliseconds: 200
-          - service: scene.turn_on
-            target:
-              entity_id: "{{ 'scene.' + states(!input 'scenes_left').lower().replace(' ', '_').replace('ё', 'yo').replace('й', 'y').replace('ц', 'c').replace('у', 'u').replace('к', 'k').replace('е', 'e').replace('н', 'n').replace('г', 'g').replace('ш', 'sh').replace('щ', 'sch').replace('з', 'z').replace('х', 'h').replace('ъ', '') .replace('ф', 'f').replace('ы', 'y').replace('в', 'v').replace('а', 'a').replace('п', 'p').replace('р', 'r').replace('о', 'o').replace('л', 'l').replace('д', 'd').replace('ж', 'zh').replace('э', 'e').replace('я', 'ya').replace('ч', 'ch').replace('с', 's').replace('м', 'm').replace('и', 'i').replace('т', 't').replace('ь', '') }}"
+              milliseconds: 300
+          - service: homeassistant.turn_on
+            
+              entity_id: "{{ states(!input 'scenes_left') }}"
 
       # Левая клавиша — долгое нажатие
       - conditions:
@@ -97,7 +97,7 @@ action:
             target:
               entity_id: !input light_right
 
-      # Правая клавиша — двойное нажатие (переключить сцену)
+      # Правая клавиша — двойное нажатие (переключить и активировать)
       - conditions:
           - condition: template
             value_template: >
@@ -107,10 +107,10 @@ action:
             target:
               entity_id: !input scenes_right
           - delay:
-              milliseconds: 200
-          - service: scene.turn_on
-            target:
-              entity_id: "{{ 'scene.' + states(!input 'scenes_right').lower().replace(' ', '_').replace('ё', 'yo').replace('й', 'y').replace('ц', 'c').replace('у', 'u').replace('к', 'k').replace('е', 'e').replace('н', 'n').replace('г', 'g').replace('ш', 'sh').replace('щ', 'sch').replace('з', 'z').replace('х', 'h').replace('ъ', '').replace('ф', 'f').replace('ы', 'y').replace('в', 'v').replace('а', 'a').replace('п', 'p').replace('р', 'r').replace('о', 'o').replace('л', 'l').replace('д', 'd').replace('ж', 'zh').replace('э', 'e').replace('я', 'ya').replace('ч', 'ch').replace('с', 's').replace('м', 'm').replace('и', 'i').replace('т', 't').replace('ь', '') }}"
+              milliseconds: 300
+          - service: homeassistant.turn_on
+            
+              entity_id: "{{ states(!input 'scenes_right') }}"
 
       # Правая клавиша — долгое нажатие
       - conditions:
