@@ -45,11 +45,10 @@ trigger:
     event_type: zha_event
 
 condition:
-  - condition: template
-    value_template: >
-      {{ trigger.event.data.device_ieee == state_attr(!input ts0042_device, 'ieee') and
-         trigger.event.data.command in ['single', 'double', 'long'] and
-         trigger.event.data.endpoint_id in [1, 2] }}
+  - condition: device
+    device_id: !input ts0042_device
+    domain: zha
+    type: zha_event
 
 action:
   - choose:
