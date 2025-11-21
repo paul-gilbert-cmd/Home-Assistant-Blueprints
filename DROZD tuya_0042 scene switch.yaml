@@ -8,7 +8,6 @@ blueprint:
       description: IEEE вашего Tuya TS0042
       selector:
         text:
-          default:
     light_left:
       name: Левая клавиша одиночное нажатие
       selector:
