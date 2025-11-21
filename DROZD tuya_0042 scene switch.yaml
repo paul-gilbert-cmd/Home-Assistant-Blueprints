@@ -62,7 +62,7 @@ action:
             target:
               entity_id: !input light_left
 
-      # Левая клавиша — двойное нажатие (только переключить)
+      # Левая клавиша — двойное нажатие
       - conditions:
           - condition: template
             value_template: >
@@ -92,7 +92,7 @@ action:
             target:
               entity_id: !input light_right
 
-      # Правая клавиша — двойное нажатие (только переключить)
+      # Правая клавиша — двойное нажатие
       - conditions:
           - condition: template
             value_template: >
