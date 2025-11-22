@@ -1,11 +1,11 @@
 blueprint:
-  name: TS004F Rotary Controller
+  name: ВКЩЯВ TS004F Rotary Controller
   description: Универсальная автоматизация для поворотного контроллера Xiaomi/Aqara TS004F с выбором целевой яркости
   domain: automation
   input:
     device_id:
       name: Устройство TS004F
-      description: Выбери ZHA устройство TS004F
+      description: Выбери диммер
       selector:
         device:
           integration: zha
