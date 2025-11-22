@@ -1,5 +1,5 @@
 blueprint:
-  name: ВКЩЯВ TS004F Rotary Controller
+  name: DROZD TS004F Rotary Controller
   description: Универсальная автоматизация для поворотного контроллера Xiaomi/Aqara TS004F с выбором целевой яркости
   domain: automation
   input:
