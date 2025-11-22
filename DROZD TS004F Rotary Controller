@@ -9,8 +9,6 @@ blueprint:
       selector:
         device:
           integration: zha
-          manufacturer: Lumi
-          model: "TS004F"
     
     target_light:
       name: Целевое устройство
