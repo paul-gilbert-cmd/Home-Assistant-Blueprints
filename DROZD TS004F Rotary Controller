@@ -38,20 +38,15 @@ blueprint:
           unit_of_measurement: "s"
 
 variables:
-  device_ieee: "{{ trigger.event.data.device_ieee }}"
   cluster_id: "{{ trigger.event.data.cluster_id }}"
   command: "{{ trigger.event.data.command }}"
   step_mode: "{{ trigger.event.data.params.get('step_mode') }}"
   step_size: "{{ trigger.event.data.args[1] if trigger.event.data.args|length > 1 else 0 }}"
-  transition_time: "{{ trigger.event.data.params.get('transition_time', 1) }}"
   
-  # Текущая яркость целевого устройства (0-255)
   current_brightness: "{{ state_attr(input.target_light, 'brightness') | default(0, true) | int }}"
   
-  # Список целевых уровней яркости
   presets: "{{ input.brightness_presets | default([51, 102, 153, 204, 255]) }}"
   
-  # Поиск текущего индекса в списке целевых уровней
   current_index: >
     {%- set ns = namespace(index=0) -%}
     {%- for preset in presets -%}
@@ -61,9 +56,6 @@ variables:
     {%- endfor -%}
     {{ ns.index }}
   
-  # Расчёт скорости на основе step_size
-  # step_size: медленный поворот = меньше значение, быстрый = больше значение
-  # Нормализуем: медленно < 15, среднее 15-20, быстро > 20
   rotation_speed: >
     {%- if step_size < 15 -%}
       slow
@@ -76,13 +68,70 @@ variables:
 trigger:
   - platform: event
     event_type: zha_event
+    event_data:
+      cluster_id: 6
+  - platform: event
+    event_type: zha_event
+    event_data:
+      cluster_id: 8
 
-condition:
-  - condition: template
-    value_template: "{{ trigger.event.data.device_id == device_id }}"
+condition: []
 
 action:
-  # ========== НАЖАТИЕ КНОПКИ ==========
   - if:
       - condition: template
-        value_template: "{{ command == 'toggle' and cluster_
+        value_template: "{{ command == 'toggle' }}"
+    then:
+      - service: light.toggle
+        target:
+          entity_id: !input target_light
+        data:
+          transition: "{{ input.transition_speed }}"
+    
+    else:
+      - if:
+          - condition: template
+            value_template: "{{ step_mode is defined and step_mode == 0 }}"
+        then:
+          - variables:
+              next_index: >
+                {%- if rotation_speed == 'fast' -%}
+                  {{ [current_index + 2, presets | length - 1] | min }}
+                {%- else -%}
+                  {{ [current_index + 1, presets | length - 1] | min }}
+                {%- endif -%}
+              next_brightness: "{{ presets[next_index] }}"
+          
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light
+            data:
+              brightness: "{{ next_brightness }}"
+              transition: "{{ input.transition_speed }}"
+        
+        else:
+          - variables:
+              next_index: >
+                {%- if rotation_speed == 'fast' -%}
+                  {{ [current_index - 2, 0] | max }}
+                {%- else -%}
+                  {{ [current_index - 1, 0] | max }}
+                {%- endif -%}
+              next_brightness: "{{ presets[next_index] }}"
+          
+          - if:
+              - condition: template
+                value_template: "{{ next_brightness > 0 }}"
+            then:
+              - service: light.turn_on
+                target:
+                  entity_id: !input target_light
+                data:
+                  brightness: "{{ next_brightness }}"
+                  transition: "{{ input.transition_speed }}"
+            else:
+              - service: light.turn_off
+                target:
+                  entity_id: !input target_light
+                data:
+                  transition: "{{ input.transition_speed }}"
