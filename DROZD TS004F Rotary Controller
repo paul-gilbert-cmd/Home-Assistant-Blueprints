@@ -78,10 +78,7 @@ action:
     then:
       - service: light.toggle
         target:
-          entity_id: !input target_light
-        
-          transition: "{{ input.transition_speed }}"
-    
+          entity_id: !input target_light    
     else:
       - if:
           - condition: template
