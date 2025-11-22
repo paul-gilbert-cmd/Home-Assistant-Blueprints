@@ -4,7 +4,7 @@ blueprint:
   domain: automation
   input:
     device_ieee:
-      name: IEEE
+      name: IEEE адрес TS004F
       description: "Введи точный IEEE адрес устройства"
       selector:
         text:
@@ -39,29 +39,15 @@ variables:
   cluster_id: "{{ trigger.event.data.cluster_id }}"
   command: "{{ trigger.event.data.command }}"
   step_mode: "{{ trigger.event.data.params.get('step_mode') }}"
-  step_size: "{{ trigger.event.data.args[1] if trigger.event.data.args|length > 1 else 0 }}"
+  step_size: "{{ trigger.event.data.args[1] if trigger.event.data.args | length > 1 else 0 }}"
   
   current_brightness: "{{ state_attr(input.target_light, 'brightness') | default(0, true) | int }}"
   
   presets: "{{ input.brightness_presets | default([51, 102, 153, 204, 255]) }}"
   
-  current_index: >
-    {%- set ns = namespace(index=0) -%}
-    {%- for preset in presets -%}
-      {%- if (current_brightness - preset) | abs <= 25 -%}
-        {%- set ns.index = loop.index0 -%}
-      {%- endif -%}
-    {%- endfor -%}
-    {{ ns.index }}
+  current_index: "{{ (presets | map('string') | list | index((current_brightness | string))) if ((current_brightness | string) in (presets | map('string') | list)) else (presets | length - 1 if current_brightness > (presets | max) else 0) }}"
   
-  rotation_speed: >
-    {%- if step_size < 15 -%}
-      slow
-    {%- elif step_size < 22 -%}
-      medium
-    {%- else -%}
-      fast
-    {%- endif -%}
+  rotation_speed: "{{ 'fast' if step_size >= 22 else ('medium' if step_size >= 15 else 'slow') }}"
 
 trigger:
   - platform: event
@@ -78,15 +64,40 @@ action:
     then:
       - service: light.toggle
         target:
-          entity_id: !input target_light    
+          entity_id: !input target_light
     else:
       - if:
           - condition: template
             value_template: "{{ step_mode is defined and step_mode == 0 }}"
         then:
           - variables:
-              next_index: >
-                {%- if rotation_speed == 'fast' -%}
-                  {{ [current_index + 2, presets | length - 1] | min }}
-                {%- else -%}
-                  {{ [current_index + 1, presets | length -
+              next_index: "{{ [current_index + (2 if rotation_speed == 'fast' else 1), presets | length - 1] | min }}"
+              next_brightness: "{{ presets[next_index] }}"
+          
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light
+            
+              brightness: "{{ next_brightness }}"
+              transition: "{{ input.transition_speed }}"
+        else:
+          - variables:
+              next_index: "{{ [current_index - (2 if rotation_speed == 'fast' else 1), 0] | max }}"
+              next_brightness: "{{ presets[next_index] }}"
+          
+          - if:
+              - condition: template
+                value_template: "{{ next_brightness > 0 }}"
+            then:
+              - service: light.turn_on
+                target:
+                  entity_id: !input target_light
+                
+                  brightness: "{{ next_brightness }}"
+                  transition: "{{ input.transition_speed }}"
+            else:
+              - service: light.turn_off
+                target:
+                  entity_id: !input target_light
+                
+                  transition: "{{ input.transition_speed }}"
