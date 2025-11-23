@@ -1,26 +1,18 @@
 blueprint:
-  name: DROZD TS004F Rotary Controller — linear brightness & button action (fixed templates)
+  name: DROZD TS004F Rotary Controller
   description: >
-    TS004F rotary controller (ZHA). Линейная регулировка яркости,
-    multiple target lights, selectable button action. Исправлены ошибки шаблонов
-    и восстановлен селектор ZHA-устройства.
+    TS004F rotary controller (ZHA)
   domain: automation
   input:
     zha_device:
-      name: ZHA device (опционально)
-      description: "Выберите устройство ZHA (будет сравнение по device_id)."
+      name: ZHA device
+      description: "Выберите устройство ZHA (будет сравнение по device_id). Если не указано — автоматизация реагирует на все устройства."
       selector:
         device:
           integration: zha
 
-    device_ieee:
-      name: IEEE адрес TS004F (опционально)
-      description: "Например: a4:c1:38:aa:56:c4:e8:76. Если заполнено — сравниваем по IEEE."
-      selector:
-        text:
-
     target_lights:
-      name: Целевые устройства (можно выбрать несколько)
+      name: Целевые устройства
       selector:
         entity:
           domain: light
@@ -46,7 +38,7 @@ blueprint:
           step: 0.1
 
     min_brightness:
-      name: Минимальная яркость (0 = выключать)
+      name: Минимальная яркость (0 = разрешать выключение)
       default: 1
       selector:
         number:
@@ -67,8 +59,7 @@ blueprint:
             - no_action
 
 variables:
-  # входные значения
-  device_ieee_input: !input device_ieee
+  # inputs
   zha_device_input: !input zha_device
   target_list: !input target_lights
   transition_speed: !input transition_speed
@@ -112,9 +103,6 @@ variables:
     {% set ft = (target_list[0] if (target_list is iterable and (target_list | length) > 0) else '') %}
     {{ (state_attr(ft, 'brightness') | default(0)) | int }}
 
-  # направление: step_mode == 1 => CCW (уменьшение)
-  is_ccw: "{{ step_mode | int == 1 }}"
-
   # линейная дельта: пропорциональна step_size * multiplier, минимум 1
   delta: >
     {% set d = (step_size | int) * (brightness_multiplier | float) %}
@@ -129,12 +117,10 @@ trigger:
     event_type: zha_event
 
 condition:
-  # Проверка устройства: приоритет device_ieee, затем zha_device (device_id), иначе разрешаем
+  # Проверка устройства: если выбран zha_device — сравниваем по device_id, иначе разрешаем
   - condition: template
     value_template: >
-      {% if device_ieee_input | trim != '' %}
-        {{ (trigger.event.data.device_ieee | default('')) == device_ieee_input }}
-      {% elif zha_device_input | default('') != '' %}
+      {% if zha_device_input | default('') != '' %}
         {{ (trigger.event.data.device_id | default('')) == zha_device_input }}
       {% else %}
         true
@@ -196,19 +182,26 @@ action:
                 {% else %}
                   {{ cb + d }}
                 {% endif %}
-              new_brightness: >
+              intended: >
                 {% set nb = raw_new | int %}
-                {% if nb <= 0 %}
+                {% if nb < 0 %}
                   0
                 {% elif nb > 255 %}
                   255
                 {% else %}
                   {{ nb }}
                 {% endif %}
+              # final decision: if intended <=0 and min_brightness > 0 -> set to min_brightness (do not turn off)
+              final_brightness: >
+                {% if intended <= 0 and (min_brightness | int) > 0 %}
+                  {{ min_brightness | int }}
+                {% else %}
+                  {{ intended }}
+                {% endif %}
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ new_brightness == 0 }}"
+                    value_template: "{{ final_brightness == 0 }}"
                 sequence:
                   - service: light.turn_off
                     target:
@@ -217,11 +210,11 @@ action:
                       transition: "{{ transition_speed }}"
               - conditions:
                   - condition: template
-                    value_template: "{{ new_brightness > 0 }}"
+                    value_template: "{{ final_brightness > 0 }}"
                 sequence:
                   - service: light.turn_on
                     target:
                       entity_id: !input target_lights
                     data:
-                      brightness: "{{ [new_brightness, min_brightness] | max }}"
+                      brightness: "{{ final_brightness }}"
                       transition: "{{ transition_speed }}"
