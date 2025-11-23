@@ -1,20 +1,13 @@
 blueprint:
-  name: TS004F Rotary Controller (multi-target, improved steps)
-  description: Универсальная автоматизация для поворотного контроллера Xiaomi/Aqara TS004F.
-    Поддерживает выбор нескольких целевых light-устройств, опциональный выбор ZHA-device и
-    адаптивный шаг по скорости поворота.
+  name: DROZD TS004F Rotary Controller — linear brightness & button action
+  description: >
+    TS004F rotary controller (ZHA). Linear brightness control (instead of preset indices),
+    multiple target lights, and selectable button action (toggle/turn_on/turn_off/no_action).
   domain: automation
   input:
-    zha_device:
-      name: ZHA device (опционально)
-      description: "Можно выбрать устройство интеграции ZHA — удобно для UI, но сравнение IEEE надёжнее вводить вручную."
-      selector:
-        device:
-          integration: zha
-
     device_ieee:
       name: IEEE адрес TS004F (опционально)
-      description: "Например: a4:c1:38:aa:56:c4:e8:76. Если оставить пустым — автоматизация сработает для любого устройства."
+      description: "Например: a4:c1:38:aa:56:c4:e8:76. Если оставить пустым — автоматика будет реагировать на любое устройство."
       selector:
         text:
 
@@ -25,12 +18,6 @@ blueprint:
           domain: light
           multiple: true
 
-    brightness_presets:
-      name: Целевые уровни яркости
-      default: [51, 102, 153, 204, 255]
-      selector:
-        object:
-
     transition_speed:
       name: Скорость переходов (сек)
       default: 0.5
@@ -40,64 +27,76 @@ blueprint:
           max: 10
           step: 0.1
 
+    brightness_multiplier:
+      name: Множитель дельты яркости
+      description: "Множитель для вычисления изменения яркости из step_size. Увеличивайте для более резкого отклика."
+      default: 1.0
+      selector:
+        number:
+          min: 0.1
+          max: 10
+          step: 0.1
+
+    min_brightness:
+      name: Минимальная яркость (0 = выключать)
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 254
+          step: 1
+
+    button_action:
+      name: Действие при нажатии кнопки
+      description: "Действие при событии toggle (нажатие)."
+      default: toggle
+      selector:
+        select:
+          options:
+            - toggle
+            - turn_on
+            - turn_off
+            - no_action
+
 variables:
-  # Входы
   device_ieee_input: !input device_ieee
   target_list: !input target_lights
+  transition_speed: !input transition_speed
+  brightness_multiplier: !input brightness_multiplier
+  min_brightness: !input min_brightness
+  button_action: !input button_action
 
-  # Парсим поля из события zha_event и приводим к числам где нужно
+  # parse zha_event fields (safe fallbacks)
   cluster_id: "{{ trigger.event.data.cluster_id | int }}"
   command: "{{ trigger.event.data.command }}"
-  # step_mode может быть в params.step_mode или в args[0]; берём разумный fallback
   step_mode: >
     {{ (trigger.event.data.params.step_mode if (trigger.event.data.params is defined and trigger.event.data.params.step_mode is not none)
         else (trigger.event.data.args[0] if (trigger.event.data.args is defined and (trigger.event.data.args | length) > 0) else 0)) | int }}
-  # step_size аналогично: params.step_size или args[1]
   step_size: >
     {{ (trigger.event.data.params.step_size if (trigger.event.data.params is defined and trigger.event.data.params.step_size is not none)
-        else (trigger.event.data.args[1] if (trigger.event.data.args is defined and (trigger.event.data.args | length) > 1) else 0)) | int }}
+        else (trigger.event.data.args[1] if (trigger.event.data.args is defined and (trigger.event.data.args | length) > 1 else 0) )) | int }}
 
-  # Преобразуем presets к списку int на всякий случай
-  presets: "{{ input.brightness_presets | default([51,102,153,204,255]) | map('int') | list }}"
-
-  # Первый target используется для чтения текущей яркости; остальным команда будет применена одинаково
+  # first target used to read current brightness
   first_target: "{{ (target_list[0] if (target_list is iterable and (target_list | length) > 0) else '') }}"
   current_brightness: "{{ (state_attr(first_target, 'brightness') | default(0)) | int }}"
 
-  # Индекс ближайшего пресета
-  current_index: >
-    {%- set closest = 0 -%}
-    {%- for i in range(presets | length) -%}
-      {%- if (presets[i] - current_brightness) | abs < (presets[closest] - current_brightness) | abs -%}
-        {%- set closest = i -%}
-      {%- endif -%}
-    {%- endfor -%}
-    {{ closest }}
-
-  # Разумная адаптация шага (чем больше step_size — тем крупнее шаг)
-  step_increment: >
-    {%- set s = step_size | int -%}
-    {%- if s <= 6 -%}
-      1
-    {%- elif s <= 15 -%}
-      1
-    {%- elif s <= 30 -%}
-      2
-    {%- elif s <= 60 -%}
-      3
-    {%- else -%}
-      4
-    {%- endif -%}
-
-  # направление: step_mode == 1 => CCW (против часовой)
+  # direction: step_mode == 1 => counter-clockwise (decrease)
   is_ccw: "{{ step_mode | int == 1 }}"
+
+  # linear delta: proportional to step_size * multiplier, at least 1
+  delta: >
+    {%- set d = (step_size | int) * (brightness_multiplier | float) -%}
+    {%- if d | int < 1 -%}
+      1
+    {%- else -%}
+      {{ d | int }}
+    {%- endif -%}
 
 trigger:
   - platform: event
     event_type: zha_event
 
 condition:
-  # Если указан IEEE — фильтруем по нему. Если пусто — пропускаем любые устройства.
   - condition: template
     value_template: >
       {% if device_ieee_input | trim != '' %}
@@ -110,69 +109,77 @@ condition:
 
 action:
   - choose:
-      # Кнопка toggle (cluster 6)
+      # Button press handling (cluster 6 toggle)
       - conditions:
           - condition: template
             value_template: "{{ command == 'toggle' }}"
         sequence:
-          - service: light.toggle
-            target:
-              entity_id: !input target_lights
-
-      # Поворот по часовой: увеличиваем индекс
-      - conditions:
-          - condition: template
-            value_template: "{{ command == 'step' and not is_ccw }}"
-        sequence:
-          - variables:
-              new_idx: "{{ [current_index + step_increment, (presets | length) - 1] | min }}"
-              brightness_value: "{{ presets[new_idx] | int }}"
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ brightness_value > 0 }}"
+                    value_template: "{{ button_action == 'toggle' }}"
+                sequence:
+                  - service: light.toggle
+                    target:
+                      entity_id: !input target_lights
+              - conditions:
+                  - condition: template
+                    value_template: "{{ button_action == 'turn_on' }}"
                 sequence:
                   - service: light.turn_on
                     target:
                       entity_id: !input target_lights
                     data:
-                      brightness: "{{ brightness_value }}"
-                      transition: !input transition_speed
+                      transition: "{{ transition_speed }}"
               - conditions:
                   - condition: template
-                    value_template: "{{ brightness_value == 0 }}"
+                    value_template: "{{ button_action == 'turn_off' }}"
                 sequence:
                   - service: light.turn_off
                     target:
                       entity_id: !input target_lights
                     data:
-                      transition: !input transition_speed
-
-      # Поворот против часовой: уменьшаем индекс
+                      transition: "{{ transition_speed }}"
+              - conditions:
+                  - condition: template
+                    value_template: "{{ button_action == 'no_action' }}"
+                sequence:
+                  - variables:
+                      debug: "no action for toggle"
+      # Rotation: linear brightness change (cluster 8, command step)
       - conditions:
           - condition: template
-            value_template: "{{ command == 'step' and is_ccw }}"
+            value_template: "{{ command == 'step' and cluster_id == 8 }}"
         sequence:
           - variables:
-              new_idx: "{{ [current_index - step_increment, 0] | max }}"
-              brightness_value: "{{ presets[new_idx] | int }}"
+              sign: "{{ -1 if is_ccw else 1 }}"
+              raw_new: "{{ current_brightness + (sign * delta) }}"
+              new_brightness: >
+                {%- set nb = raw_new | int -%}
+                {%- if nb < 0 -%}
+                  0
+                {%- elif nb > 255 -%}
+                  255
+                {%- else -%}
+                  {{ nb }}
+                {%- endif -%}
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ brightness_value > 0 }}"
+                    value_template: "{{ new_brightness == 0 }}"
+                sequence:
+                  - service: light.turn_off
+                    target:
+                      entity_id: !input target_lights
+                    data:
+                      transition: "{{ transition_speed }}"
+              - conditions:
+                  - condition: template
+                    value_template: "{{ new_brightness > 0 }}"
                 sequence:
                   - service: light.turn_on
                     target:
                       entity_id: !input target_lights
                     data:
-                      brightness: "{{ brightness_value }}"
-                      transition: !input transition_speed
-              - conditions:
-                  - condition: template
-                    value_template: "{{ brightness_value == 0 }}"
-                sequence:
-                  - service: light.turn_off
-                    target:
-                      entity_id: !input target_lights
-                    data:
-                      transition: !input transition_speed
+                      brightness: "{{ [new_brightness, min_brightness] | max }}"
+                      transition: "{{ transition_speed }}"
