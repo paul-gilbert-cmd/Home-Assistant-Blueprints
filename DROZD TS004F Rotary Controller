@@ -196,18 +196,14 @@ action:
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ command == 'toggle' }}"
+            value_template: "{{ trigger.event.data.command == 'toggle' }}"
         sequence:
           - variables:
-              # remember device id from this event to match second toggle
-              _dev_id: "{{ device_id_from_event }}"
-          # Отладочное уведомление — временно, чтобы увидеть вход в ветку toggle
+              _dev_id: "{{ trigger.event.data.device_id | default('') }}"
           - service: persistent_notification.create
             data:
               title: "TS004F debug"
-              message: >
-                Toggle event received from device_id={{ _dev_id }} at {{ now() }}
-          # Ждём второго toggle (любой device), фильтровать будем после
+              message: "Toggle event received from device_id={{ _dev_id }} at {{ now() }}"
           - wait_for_trigger:
               - platform: event
                 event_type: zha_event
@@ -215,15 +211,11 @@ action:
                   command: "toggle"
             timeout: "00:00:{{ double_press_timeout }}"
             continue_on_timeout: true
-          # Определяем, пришёл ли второй toggle именно от того же устройства
           - variables:
               _dbl_received: "{{ (wait.trigger is defined) and (wait.trigger.event.data.device_id | default('') == _dev_id) }}"
               _dbl_brightness: "{{ ((double_press_brightness_pct | float) / 100.0 * 255) | int }}"
               _single_brightness: "{{ ((single_press_brightness_pct | float) / 100.0 * 255) | int }}"
-          # Обработка: если пришёл второй toggle от того же device -> double action,
-          # иначе -> single action
           - choose:
-              # double: brightness_1
               - conditions:
                   - condition: template
                     value_template: "{{ _dbl_received and double_button_action == 'brightness_1' }}"
@@ -234,7 +226,6 @@ action:
                     data:
                       brightness: 1
                       transition: "{{ transition_speed }}"
-              # double: brightness_100
               - conditions:
                   - condition: template
                     value_template: "{{ _dbl_received and double_button_action == 'brightness_100' }}"
@@ -245,7 +236,6 @@ action:
                     data:
                       brightness: 255
                       transition: "{{ transition_speed }}"
-              # double: custom -> 0 => off
               - conditions:
                   - condition: template
                     value_template: "{{ _dbl_received and double_button_action == 'brightness_custom' and _dbl_brightness == 0 }}"
@@ -255,7 +245,6 @@ action:
                       entity_id: !input target_lights
                     data:
                       transition: "{{ transition_speed }}"
-              # double: custom -> set brightness
               - conditions:
                   - condition: template
                     value_template: "{{ _dbl_received and double_button_action == 'brightness_custom' and _dbl_brightness > 0 }}"
@@ -266,7 +255,6 @@ action:
                     data:
                       brightness: "{{ _dbl_brightness }}"
                       transition: "{{ transition_speed }}"
-              # double: no_action
               - conditions:
                   - condition: template
                     value_template: "{{ _dbl_received and double_button_action == 'no_action' }}"
@@ -274,7 +262,6 @@ action:
                   - variables:
                       _debug: "no double-action"
 
-              # ---------- single-press branches (если второго клика не было) ----------
               - conditions:
                   - condition: template
                     value_template: "{{ (not _dbl_received) and button_action == 'brightness_1' }}"
@@ -321,10 +308,9 @@ action:
                   - variables:
                       _debug: "no single-action"
 
-      # Rotation -> linear change (оставлена без изменений)
       - conditions:
           - condition: template
-            value_template: "{{ command == 'step' and cluster_id == 8 }}"
+            value_template: "{{ trigger.event.data.command == 'step' and trigger.event.data.cluster_id | int == 8 }}"
         sequence:
           - variables:
               raw_new: >
