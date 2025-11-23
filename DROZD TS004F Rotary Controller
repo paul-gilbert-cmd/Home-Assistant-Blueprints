@@ -1,5 +1,5 @@
 blueprint:
-  name: DROZD TS004F Rotary Controller — linear brightness & button action (fixed)
+  name: DROZD TS004F Rotary Controller — linear brightness & button action (fixed templates)
   description: >
     TS004F rotary controller (ZHA). Линейная регулировка яркости,
     multiple target lights, selectable button action. Исправлены ошибки шаблонов
@@ -67,7 +67,7 @@ blueprint:
             - no_action
 
 variables:
-  # inputs
+  # входные значения
   device_ieee_input: !input device_ieee
   zha_device_input: !input zha_device
   target_list: !input target_lights
@@ -76,38 +76,46 @@ variables:
   min_brightness: !input min_brightness
   button_action: !input button_action
 
-  # parse zha_event fields safely
+  # простые поля из события
   cluster_id: "{{ trigger.event.data.cluster_id | int }}"
   command: "{{ trigger.event.data.command }}"
 
-  # step_mode: params.step_mode OR args[0] OR 0
+  # step_mode: params.step_mode OR args[0] OR 0 — безопасно через set/if
   step_mode: >
+    {% set _sm = 0 %}
     {% if trigger.event.data.params is defined and trigger.event.data.params.step_mode is not none %}
-      {{ trigger.event.data.params.step_mode | int }}
+      {% set _sm = trigger.event.data.params.step_mode %}
     {% elif trigger.event.data.args is defined and (trigger.event.data.args | length) > 0 %}
-      {{ trigger.event.data.args[0] | int }}
-    {% else %}
-      0
+      {% set _sm = trigger.event.data.args[0] %}
     {% endif %}
+    {{ _sm | int }}
 
-  # step_size: params.step_size OR args[1] OR 0
+  # step_size: params.step_size OR args[1] OR 0 — безопасно через set/if
   step_size: >
+    {% set _ss = 0 %}
     {% if trigger.event.data.params is defined and trigger.event.data.params.step_size is not none %}
-      {{ trigger.event.data.params.step_size | int }}
+      {% set _ss = trigger.event.data.params.step_size %}
     {% elif trigger.event.data.args is defined and (trigger.event.data.args | length) > 1 %}
-      {{ trigger.event.data.args[1] | int }}
+      {% set _ss = trigger.event.data.args[1] %}
+    {% endif %}
+    {{ _ss | int }}
+
+  # первый target для чтения текущей яркости
+  first_target: >
+    {% if target_list is iterable and (target_list | length) > 0 %}
+      {{ target_list[0] }}
     {% else %}
-      0
+      {{ '' }}
     {% endif %}
 
-  # target helpers
-  first_target: "{{ (target_list[0] if (target_list is iterable and (target_list | length) > 0) else '') }}"
-  current_brightness: "{{ (state_attr(first_target, 'brightness') | default(0)) | int }}"
+  current_brightness: >
+    {% set ft = (target_list[0] if (target_list is iterable and (target_list | length) > 0) else '') %}
+    {{ (state_attr(ft, 'brightness') | default(0)) | int }}
 
-  # direction: step_mode == 1 => CCW (decrease)
+  # направление: step_mode == 1 => CCW (уменьшение)
   is_ccw: "{{ step_mode | int == 1 }}"
 
-  # linear delta: proportional to step_size * multiplier, minimum 1
+  # линейная дельта: пропорциональна step_size * multiplier, минимум 1
   delta: >
     {% set d = (step_size | int) * (brightness_multiplier | float) %}
     {% if (d | int) < 1 %}
@@ -172,7 +180,7 @@ action:
                     value_template: "{{ button_action == 'no_action' }}"
                 sequence:
                   - variables:
-                      debug: "no action for toggle"
+                      _debug: "no action for toggle"
 
       # Rotation: linear brightness change (cluster 8, command step)
       - conditions:
@@ -180,9 +188,6 @@ action:
             value_template: "{{ command == 'step' and cluster_id == 8 }}"
         sequence:
           - variables:
-              # sign depends on direction
-              sign: >
-                {% if step_mode | int == 1 %}-1{% else %}1{% endif %}
               raw_new: >
                 {% set cb = current_brightness | int %}
                 {% set d = delta | int %}
