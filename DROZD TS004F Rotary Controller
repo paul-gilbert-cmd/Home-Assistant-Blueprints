@@ -8,7 +8,7 @@ blueprint:
   input:
     zha_device:
       name: ZHA device
-      description: "Выберите устройство"
+      description: "Выберите устройство ZHA."
       selector:
         device:
           integration: zha
@@ -61,7 +61,7 @@ blueprint:
     # single-press action
     button_action:
       name: Одиночное нажатие
-      description: "Действие при событии toggle (одиночное нажатие)"
+      description: "Действие при событии toggle (одиночное нажатие)."
       default: no_action
       selector:
         select:
@@ -74,7 +74,7 @@ blueprint:
     # brightness value for single press (percent)
     single_press_brightness:
       name: Яркость при одиночном нажатии (%)
-      description: "Используется, если выбрано brightness_custom. Значение 0 = выключить"
+      description: "Используется, если выбрано brightness_custom. Значение 0 = выключить."
       default: 100
       selector:
         number:
@@ -85,7 +85,7 @@ blueprint:
     # double-press action
     double_button_action:
       name: Двойное нажатие
-      description: "Действие, выполняемое при быстром двойном нажатии"
+      description: "Действие, выполняемое при быстром двойном нажатии (время задаётся ниже)."
       default: no_action
       selector:
         select:
@@ -98,7 +98,7 @@ blueprint:
     # brightness value for double press (percent)
     double_press_brightness:
       name: Яркость при двойном нажатии (%)
-      description: "Используется, если выбрано brightness_custom для двойного нажатия. 0 = выключить"
+      description: "Используется, если выбрано brightness_custom для двойного нажатия. 0 = выключить."
       default: 100
       selector:
         number:
@@ -108,7 +108,7 @@ blueprint:
 
     double_press_timeout:
       name: Таймаут для распознавания двойного нажатия (секунды)
-      description: "Ожидание второго toggle-события для распознавания двойного нажатия"
+      description: "Ожидание второго toggle-события для распознавания двойного нажатия."
       default: 0.5
       selector:
         number:
@@ -256,6 +256,7 @@ action:
                                       entity_id: !input target_lights
                                     data:
                                       transition: "{{ transition_speed }}"
+                              # default branch for the inner choose (double custom)
                               default:
                                 - service: light.turn_on
                                   target:
@@ -269,6 +270,7 @@ action:
                         sequence:
                           - variables:
                               _debug: "no double-action"
+              # Else (timeout) -> single action (default branch of outer choose)
               default:
                 - choose:
                     - conditions:
@@ -310,6 +312,7 @@ action:
                                     entity_id: !input target_lights
                                   data:
                                     transition: "{{ transition_speed }}"
+                            # default branch for the inner choose (single custom)
                             default:
                               - service: light.turn_on
                                 target:
