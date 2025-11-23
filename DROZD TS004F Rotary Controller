@@ -8,13 +8,13 @@ blueprint:
   input:
     zha_device:
       name: ZHA device
-      description: "Выберите устройство ZHA (сравнение по device_id). Если не указано — автоматизация реагирует на все устройства."
+      description: "Выберите устройство"
       selector:
         device:
           integration: zha
 
     target_lights:
-      name: Целевые устройства (можно выбрать несколько)
+      name: Целевые устройства
       selector:
         entity:
           domain: light
@@ -61,7 +61,7 @@ blueprint:
     # single-press action
     button_action:
       name: Одиночное нажатие
-      description: "Действие при событии toggle (одиночное нажатие)."
+      description: "Действие при событии toggle (одиночное нажатие)"
       default: no_action
       selector:
         select:
@@ -74,7 +74,7 @@ blueprint:
     # brightness value for single press (percent)
     single_press_brightness:
       name: Яркость при одиночном нажатии (%)
-      description: "Используется, если выбрано brightness_custom. Значение 0 = выключить."
+      description: "Используется, если выбрано brightness_custom. Значение 0 = выключить"
       default: 100
       selector:
         number:
@@ -85,7 +85,7 @@ blueprint:
     # double-press action
     double_button_action:
       name: Двойное нажатие
-      description: "Действие, выполняемое при быстром двойном нажатии (время задаётся ниже)."
+      description: "Действие, выполняемое при быстром двойном нажатии"
       default: no_action
       selector:
         select:
@@ -98,7 +98,7 @@ blueprint:
     # brightness value for double press (percent)
     double_press_brightness:
       name: Яркость при двойном нажатии (%)
-      description: "Используется, если выбрано brightness_custom для двойного нажатия. 0 = выключить."
+      description: "Используется, если выбрано brightness_custom для двойного нажатия. 0 = выключить"
       default: 100
       selector:
         number:
@@ -108,7 +108,7 @@ blueprint:
 
     double_press_timeout:
       name: Таймаут для распознавания двойного нажатия (секунды)
-      description: "Ожидание второго toggle-события для распознавания двойного нажатия."
+      description: "Ожидание второго toggle-события для распознавания двойного нажатия"
       default: 0.5
       selector:
         number:
@@ -219,28 +219,13 @@ action:
                   - choose:
                       - conditions:
                           - condition: template
-                            value_template: "{{ double_button_action == 'toggle' }}"
-                        sequence:
-                          - service: light.toggle
-                            target:
-                              entity_id: !input target_lights
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ double_button_action == 'turn_on' }}"
+                            value_template: "{{ double_button_action == 'brightness_1' }}"
                         sequence:
                           - service: light.turn_on
                             target:
                               entity_id: !input target_lights
                             data:
-                              transition: "{{ transition_speed }}"
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ double_button_action == 'turn_off' }}"
-                        sequence:
-                          - service: light.turn_off
-                            target:
-                              entity_id: !input target_lights
-                            data:
+                              brightness: 1
                               transition: "{{ transition_speed }}"
                       - conditions:
                           - condition: template
@@ -271,89 +256,73 @@ action:
                                       entity_id: !input target_lights
                                     data:
                                       transition: "{{ transition_speed }}"
-                              - default:
-                                  - service: light.turn_on
-                                    target:
-                                      entity_id: !input target_lights
-                                    data:
-                                      brightness: "{{ _b }}"
-                                      transition: "{{ transition_speed }}"
+                              default:
+                                - service: light.turn_on
+                                  target:
+                                    entity_id: !input target_lights
+                                  data:
+                                    brightness: "{{ _b }}"
+                                    transition: "{{ transition_speed }}"
                       - conditions:
                           - condition: template
                             value_template: "{{ double_button_action == 'no_action' }}"
                         sequence:
                           - variables:
                               _debug: "no double-action"
-              # Else (timeout) -> single action
-              - default:
-                  - choose:
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ button_action == 'toggle' }}"
-                        sequence:
-                          - service: light.toggle
-                            target:
-                              entity_id: !input target_lights
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ button_action == 'turn_on' }}"
-                        sequence:
-                          - service: light.turn_on
-                            target:
-                              entity_id: !input target_lights
-                            data:
-                              transition: "{{ transition_speed }}"
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ button_action == 'turn_off' }}"
-                        sequence:
-                          - service: light.turn_off
-                            target:
-                              entity_id: !input target_lights
-                            data:
-                              transition: "{{ transition_speed }}"
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ button_action == 'brightness_100' }}"
-                        sequence:
-                          - service: light.turn_on
-                            target:
-                              entity_id: !input target_lights
-                            data:
-                              brightness: 255
-                              transition: "{{ transition_speed }}"
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ button_action == 'brightness_custom' }}"
-                        sequence:
-                          - variables:
-                              _pct: "{{ single_press_brightness_pct | float }}"
-                              _b: >
-                                {% set p = (_pct) %}
-                                {{ ((p / 100.0) * 255) | int }}
-                          - choose:
-                              - conditions:
-                                  - condition: template
-                                    value_template: "{{ _b == 0 }}"
-                                sequence:
-                                  - service: light.turn_off
-                                    target:
-                                      entity_id: !input target_lights
-                                    data:
-                                      transition: "{{ transition_speed }}"
-                              - default:
-                                  - service: light.turn_on
-                                    target:
-                                      entity_id: !input target_lights
-                                    data:
-                                      brightness: "{{ _b }}"
-                                      transition: "{{ transition_speed }}"
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ button_action == 'no_action' }}"
-                        sequence:
-                          - variables:
-                              _debug: "no single-action"
+              default:
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ button_action == 'brightness_1' }}"
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: !input target_lights
+                          data:
+                            brightness: 1
+                            transition: "{{ transition_speed }}"
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ button_action == 'brightness_100' }}"
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: !input target_lights
+                          data:
+                            brightness: 255
+                            transition: "{{ transition_speed }}"
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ button_action == 'brightness_custom' }}"
+                      sequence:
+                        - variables:
+                            _pct: "{{ single_press_brightness_pct | float }}"
+                            _b: >
+                              {% set p = (_pct) %}
+                              {{ ((p / 100.0) * 255) | int }}
+                        - choose:
+                            - conditions:
+                                - condition: template
+                                  value_template: "{{ _b == 0 }}"
+                              sequence:
+                                - service: light.turn_off
+                                  target:
+                                    entity_id: !input target_lights
+                                  data:
+                                    transition: "{{ transition_speed }}"
+                            default:
+                              - service: light.turn_on
+                                target:
+                                  entity_id: !input target_lights
+                                data:
+                                  brightness: "{{ _b }}"
+                                  transition: "{{ transition_speed }}"
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ button_action == 'no_action' }}"
+                      sequence:
+                        - variables:
+                            _debug: "no single-action"
 
       # Rotation -> linear change
       - conditions:
