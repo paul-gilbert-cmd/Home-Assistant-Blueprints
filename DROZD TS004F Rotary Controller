@@ -194,13 +194,11 @@ condition:
 
 action:
   - choose:
-      # Button press with double-press detection
       - conditions:
           - condition: template
             value_template: "{{ command == 'toggle' }}"
         sequence:
           - variables:
-              # remember device id from this event to match second toggle
               _dev_id: "{{ device_id_from_event }}"
           - wait_for_trigger:
               - platform: event
@@ -214,7 +212,6 @@ action:
               _dbl_received: "{{ wait.trigger is defined }}"
               _dbl_brightness: "{{ ((double_press_brightness_pct | float) / 100.0 * 255) | int }}"
               _single_brightness: "{{ ((single_press_brightness_pct | float) / 100.0 * 255) | int }}"
-          # single/double handling in one flat choose (no nested defaults)
           - choose:
               - conditions:
                   - condition: template
@@ -261,8 +258,6 @@ action:
                 sequence:
                   - variables:
                       _debug: "no double-action"
-
-              # single-press branches (no second toggle received)
               - conditions:
                   - condition: template
                     value_template: "{{ (not _dbl_received) and button_action == 'brightness_1' }}"
@@ -309,7 +304,6 @@ action:
                   - variables:
                       _debug: "no single-action"
 
-      # Rotation -> linear change
       - conditions:
           - condition: template
             value_template: "{{ command == 'step' and cluster_id == 8 }}"
@@ -332,8 +326,6 @@ action:
                 {% else %}
                   {{ nb }}
                 {% endif %}
-              # final: if intended == 0 -> allow off only when min_brightness == 0,
-              # otherwise ensure at least min_brightness; and if 0 < intended < min_brightness -> set to min_brightness
               final_brightness: >
                 {% set ib = (min_brightness | int) %}
                 {% if intended == 0 %}
