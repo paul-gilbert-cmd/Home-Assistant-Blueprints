@@ -1,0 +1,15 @@
+alias: Тест zha_event -> уведомление
+description: "Временная автоматизация для проверки, получает ли HA zha_event"
+trigger:
+  - platform: event
+    event_type: zha_event
+action:
+  - service: persistent_notification.create
+    data:
+      title: "zha_event test"
+      message: >
+        Получен zha_event: device_id={{ trigger.event.data.device_id | default('') }},
+        device_ieee={{ trigger.event.data.device_ieee | default('') }},
+        cluster_id={{ trigger.event.data.cluster_id | default('') }},
+        command={{ trigger.event.data.command | default('') }}
+mode: single
