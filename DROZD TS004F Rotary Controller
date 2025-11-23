@@ -1,19 +1,20 @@
 blueprint:
-  name: DROZD TS004F Rotary Controller
-  description: Универсальная автоматизация для поворотного контроллера Xiaomi/Aqara TS004F
+  name: TS004F Rotary Controller (multi-target, improved steps)
+  description: Универсальная автоматизация для поворотного контроллера Xiaomi/Aqara TS004F.
+    Поддерживает выбор нескольких целевых light-устройств, опциональный выбор ZHA-device и
+    адаптивный шаг по скорости поворота.
   domain: automation
   input:
-    # Опциональный селектор ZHA-устройства (удобно выбирать устройство в UI)
     zha_device:
-      name: Выберите устройство ZHA (опционально)
-      description: "Можно выбрать ZHA-устройство. ВНИМАНИЕ: из-за ограничений blueprints автоматического извлечения IEEE не всегда происходит — см. пояснение ниже."
+      name: ZHA device (опционально)
+      description: "Можно выбрать устройство интеграции ZHA — удобно для UI, но сравнение IEEE надёжнее вводить вручную."
       selector:
         device:
           integration: zha
 
     device_ieee:
-      name: IEEE адрес TS004F (например a4:c1:38:aa:56:c4:e8:76)
-      description: "Если zha_device не помогает, вставьте сюда IEEE адрес (строкой)."
+      name: IEEE адрес TS004F (опционально)
+      description: "Например: a4:c1:38:aa:56:c4:e8:76. Если оставить пустым — автоматизация сработает для любого устройства."
       selector:
         text:
 
@@ -40,23 +41,30 @@ blueprint:
           step: 0.1
 
 variables:
-  # Если вы указали zha_device, оставляю поле для будущего автополучения IEEE.
-  # На практике в UI часто удобнее скопировать IEEE из ZHA-устройства и вставить здесь.
+  # Входы
   device_ieee_input: !input device_ieee
+  target_list: !input target_lights
 
-  # Приводим числовые поля к int, чтобы сравнения работали корректно
+  # Парсим поля из события zha_event и приводим к числам где нужно
   cluster_id: "{{ trigger.event.data.cluster_id | int }}"
   command: "{{ trigger.event.data.command }}"
-  step_mode: "{{ (trigger.event.data.params.get('step_mode') if trigger.event.data.params is defined else 0) | int }}"
-  step_size: "{{ (trigger.event.data.args[1] if (trigger.event.data.args is defined and (trigger.event.data.args | length) > 1) else 0) | int }}"
+  # step_mode может быть в params.step_mode или в args[0]; берём разумный fallback
+  step_mode: >
+    {{ (trigger.event.data.params.step_mode if (trigger.event.data.params is defined and trigger.event.data.params.step_mode is not none)
+        else (trigger.event.data.args[0] if (trigger.event.data.args is defined and (trigger.event.data.args | length) > 0) else 0)) | int }}
+  # step_size аналогично: params.step_size или args[1]
+  step_size: >
+    {{ (trigger.event.data.params.step_size if (trigger.event.data.params is defined and trigger.event.data.params.step_size is not none)
+        else (trigger.event.data.args[1] if (trigger.event.data.args is defined and (trigger.event.data.args | length) > 1) else 0)) | int }}
 
-  # Для многократного выбора целевых устройств берём первый для определения current_brightness
-  target_list: !input target_lights
+  # Преобразуем presets к списку int на всякий случай
+  presets: "{{ input.brightness_presets | default([51,102,153,204,255]) | map('int') | list }}"
+
+  # Первый target используется для чтения текущей яркости; остальным команда будет применена одинаково
   first_target: "{{ (target_list[0] if (target_list is iterable and (target_list | length) > 0) else '') }}"
+  current_brightness: "{{ (state_attr(first_target, 'brightness') | default(0)) | int }}"
 
-  current_brightness: "{{ (state_attr(first_target, 'brightness') | default(0) ) | int }}"
-  presets: "{{ input.brightness_presets | default([51, 102, 153, 204, 255]) }}"
-
+  # Индекс ближайшего пресета
   current_index: >
     {%- set closest = 0 -%}
     {%- for i in range(presets | length) -%}
@@ -66,15 +74,30 @@ variables:
     {%- endfor -%}
     {{ closest }}
 
-  is_fast: "{{ step_size > 20 }}"
-  is_ccw: "{{ step_mode == 1 }}"
+  # Разумная адаптация шага (чем больше step_size — тем крупнее шаг)
+  step_increment: >
+    {%- set s = step_size | int -%}
+    {%- if s <= 6 -%}
+      1
+    {%- elif s <= 15 -%}
+      1
+    {%- elif s <= 30 -%}
+      2
+    {%- elif s <= 60 -%}
+      3
+    {%- else -%}
+      4
+    {%- endif -%}
+
+  # направление: step_mode == 1 => CCW (против часовой)
+  is_ccw: "{{ step_mode | int == 1 }}"
 
 trigger:
   - platform: event
     event_type: zha_event
 
 condition:
-  # Логика допускает либо сравнение по введённому IEEE, либо (в будущем) по выбранному zha_device.
+  # Если указан IEEE — фильтруем по нему. Если пусто — пропускаем любые устройства.
   - condition: template
     value_template: >
       {% if device_ieee_input | trim != '' %}
@@ -87,6 +110,7 @@ condition:
 
 action:
   - choose:
+      # Кнопка toggle (cluster 6)
       - conditions:
           - condition: template
             value_template: "{{ command == 'toggle' }}"
@@ -95,41 +119,57 @@ action:
             target:
               entity_id: !input target_lights
 
+      # Поворот по часовой: увеличиваем индекс
       - conditions:
           - condition: template
-            value_template: "{{ not is_ccw }}"
+            value_template: "{{ command == 'step' and not is_ccw }}"
         sequence:
           - variables:
-              new_idx: "{{ [current_index + (2 if is_fast else 1), presets | length - 1] | min }}"
-              brightness_value: "{{ presets[new_idx] }}"
-          - service: light.turn_on
-            target:
-              entity_id: !input target_lights
-            data:
-              brightness: "{{ brightness_value | int }}"
-              transition: !input transition_speed
-
-      - conditions:
-          - condition: template
-            value_template: "{{ is_ccw }}"
-        sequence:
-          - variables:
-              new_idx: "{{ [current_index - (2 if is_fast else 1), 0] | max }}"
-              brightness_value: "{{ presets[new_idx] }}"
+              new_idx: "{{ [current_index + step_increment, (presets | length) - 1] | min }}"
+              brightness_value: "{{ presets[new_idx] | int }}"
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ brightness_value | int > 0 }}"
+                    value_template: "{{ brightness_value > 0 }}"
                 sequence:
                   - service: light.turn_on
                     target:
                       entity_id: !input target_lights
                     data:
-                      brightness: "{{ brightness_value | int }}"
+                      brightness: "{{ brightness_value }}"
                       transition: !input transition_speed
               - conditions:
                   - condition: template
-                    value_template: "{{ brightness_value | int == 0 }}"
+                    value_template: "{{ brightness_value == 0 }}"
+                sequence:
+                  - service: light.turn_off
+                    target:
+                      entity_id: !input target_lights
+                    data:
+                      transition: !input transition_speed
+
+      # Поворот против часовой: уменьшаем индекс
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'step' and is_ccw }}"
+        sequence:
+          - variables:
+              new_idx: "{{ [current_index - step_increment, 0] | max }}"
+              brightness_value: "{{ presets[new_idx] | int }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ brightness_value > 0 }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input target_lights
+                    data:
+                      brightness: "{{ brightness_value }}"
+                      transition: !input transition_speed
+              - conditions:
+                  - condition: template
+                    value_template: "{{ brightness_value == 0 }}"
                 sequence:
                   - service: light.turn_off
                     target:
