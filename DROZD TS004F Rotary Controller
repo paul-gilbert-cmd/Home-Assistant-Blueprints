@@ -1,18 +1,20 @@
 blueprint:
-  name: DROZD TS004F Rotary Controller
+  name: TS004F Rotary Controller — linear brightness & button action (tuned, 100% button)
   description: >
-    TS004F rotary controller (ZHA)
+    TS004F rotary controller (ZHA). Линейная регулировка яркости с настраиваемой чувствительностью,
+    множественные цели (lights) и выбор действия при нажатии кнопки.
+    Добавлена опция "яркость 100%" для действия при нажатии.
   domain: automation
   input:
     zha_device:
-      name: ZHA device
+      name: ZHA device (опционально)
       description: "Выберите устройство ZHA (будет сравнение по device_id). Если не указано — автоматизация реагирует на все устройства."
       selector:
         device:
           integration: zha
 
     target_lights:
-      name: Целевые устройства
+      name: Целевые устройства (можно выбрать несколько)
       selector:
         entity:
           domain: light
@@ -29,12 +31,22 @@ blueprint:
 
     brightness_multiplier:
       name: Множитель дельты яркости
-      description: "Множитель для вычисления изменения яркости из step_size."
+      description: "Умножает влияние step_size. Увеличьте для более резкого отклика."
       default: 1.0
       selector:
         number:
           min: 0.1
           max: 10
+          step: 0.1
+
+    sensitivity_divisor:
+      name: Чувствительность (делитель)
+      description: "Делит (step_size * multiplier). Чем больше — тем мягче изменение. Рекомендуемое значение по умолчанию 4."
+      default: 4.0
+      selector:
+        number:
+          min: 0.1
+          max: 20
           step: 0.1
 
     min_brightness:
@@ -56,6 +68,7 @@ blueprint:
             - toggle
             - turn_on
             - turn_off
+            - brightness_100
             - no_action
 
 variables:
@@ -64,14 +77,15 @@ variables:
   target_list: !input target_lights
   transition_speed: !input transition_speed
   brightness_multiplier: !input brightness_multiplier
+  sensitivity_divisor: !input sensitivity_divisor
   min_brightness: !input min_brightness
   button_action: !input button_action
 
-  # простые поля из события
+  # fields from event (safe parsing)
   cluster_id: "{{ trigger.event.data.cluster_id | int }}"
   command: "{{ trigger.event.data.command }}"
 
-  # step_mode: params.step_mode OR args[0] OR 0 — безопасно через set/if
+  # step_mode: params.step_mode OR args[0] OR 0
   step_mode: >
     {% set _sm = 0 %}
     {% if trigger.event.data.params is defined and trigger.event.data.params.step_mode is not none %}
@@ -81,7 +95,7 @@ variables:
     {% endif %}
     {{ _sm | int }}
 
-  # step_size: params.step_size OR args[1] OR 0 — безопасно через set/if
+  # step_size: params.step_size OR args[1] OR 0
   step_size: >
     {% set _ss = 0 %}
     {% if trigger.event.data.params is defined and trigger.event.data.params.step_size is not none %}
@@ -91,7 +105,15 @@ variables:
     {% endif %}
     {{ _ss | int }}
 
-  # первый target для чтения текущей яркости
+  # transition_time from event if present (may help tuning)
+  transition_time_from_event: >
+    {% if trigger.event.data.params is defined and trigger.event.data.params.transition_time is not none %}
+      {{ trigger.event.data.params.transition_time | int }}
+    {% else %}
+      0
+    {% endif %}
+
+  # first target to read brightness
   first_target: >
     {% if target_list is iterable and (target_list | length) > 0 %}
       {{ target_list[0] }}
@@ -103,13 +125,13 @@ variables:
     {% set ft = (target_list[0] if (target_list is iterable and (target_list | length) > 0) else '') %}
     {{ (state_attr(ft, 'brightness') | default(0)) | int }}
 
-  # линейная дельта: пропорциональна step_size * multiplier, минимум 1
+  # compute delta: floor((step_size * multiplier) / sensitivity_divisor), min 1
   delta: >
-    {% set d = (step_size | int) * (brightness_multiplier | float) %}
-    {% if (d | int) < 1 %}
+    {% set raw = (step_size | int) * (brightness_multiplier | float) / (sensitivity_divisor | float) %}
+    {% if (raw | int) < 1 %}
       1
     {% else %}
-      {{ d | int }}
+      {{ raw | int }}
     {% endif %}
 
 trigger:
@@ -117,7 +139,7 @@ trigger:
     event_type: zha_event
 
 condition:
-  # Проверка устройства: если выбран zha_device — сравниваем по device_id, иначе разрешаем
+  # if zha_device selected — filter by device_id, else allow all
   - condition: template
     value_template: >
       {% if zha_device_input | default('') != '' %}
@@ -130,7 +152,7 @@ condition:
 
 action:
   - choose:
-      # Button press handling (cluster 6 toggle)
+      # button
       - conditions:
           - condition: template
             value_template: "{{ command == 'toggle' }}"
@@ -163,12 +185,22 @@ action:
                       transition: "{{ transition_speed }}"
               - conditions:
                   - condition: template
+                    value_template: "{{ button_action == 'brightness_100' }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input target_lights
+                    data:
+                      brightness: 255
+                      transition: "{{ transition_speed }}"
+              - conditions:
+                  - condition: template
                     value_template: "{{ button_action == 'no_action' }}"
                 sequence:
                   - variables:
                       _debug: "no action for toggle"
 
-      # Rotation: linear brightness change (cluster 8, command step)
+      # rotation -> linear change
       - conditions:
           - condition: template
             value_template: "{{ command == 'step' and cluster_id == 8 }}"
@@ -191,12 +223,22 @@ action:
                 {% else %}
                   {{ nb }}
                 {% endif %}
-              # final decision: if intended <=0 and min_brightness > 0 -> set to min_brightness (do not turn off)
+              # final: if intended == 0 -> allow off only when min_brightness == 0,
+              # otherwise ensure at least min_brightness; and if 0 < intended < min_brightness -> set to min_brightness
               final_brightness: >
-                {% if intended <= 0 and (min_brightness | int) > 0 %}
-                  {{ min_brightness | int }}
+                {% set ib = (min_brightness | int) %}
+                {% if intended == 0 %}
+                  {% if ib == 0 %}
+                    0
+                  {% else %}
+                    {{ ib }}
+                  {% endif %}
                 {% else %}
-                  {{ intended }}
+                  {% if ib > 0 and intended < ib %}
+                    {{ ib }}
+                  {% else %}
+                    {{ intended }}
+                  {% endif %}
                 {% endif %}
           - choose:
               - conditions:
