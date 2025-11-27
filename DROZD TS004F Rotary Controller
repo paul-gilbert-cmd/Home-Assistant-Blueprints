@@ -1,36 +1,33 @@
 blueprint:
-  name: ZHA - TS004F Rotary Controller
+  name: ZHA - TS004F Rotary Controller (stable)
   description: |
-    Управление яркостью света с помощью поворотного контроллера TS004F через ZHA. 
-    
-    Функции:
+    Управление яркостью через ZHA события rotary-контроллера:
     - Поворот по часовой стрелке: увеличение яркости
-    - Поворот против часовой стрелки: уменьшение яркости
-    - Одинарное нажатие: установка заданной яркости
-    - Двойное нажатие: установка другой заданной яркости
-    - Настраиваемая чувствительность поворота
-    
+    - Поворот против часовой: уменьшение яркости
+    - Одинарное нажatie: установка фиксированной яркости
+    - Двойное нажatie: установка другой фиксированной яркости (распознается по двум toggle подряд)
   domain: automation
-  
+
   input:
     controller:
-      name: Контроллер TS004F
-      description: Выберите устройство TS004F Rotary Controller (или любое ZHA устройство)
+      name: Контроллер ZHA
+      description: Выберите устройство ZHA (ротари контроллер)
       selector:
         device:
           integration: zha
           multiple: false
-    
+
     target_light:
-      name: Управляемое устройство освещения
-      description: Выберите светильник или группу светильников для управления
+      name: Свет/группа света
+      description: Выберите целевой свет
       selector:
-        entity:
-          domain: light
-    
+        target:
+          entity:
+            - domain: light
+
     sensitivity:
       name: Чувствительность поворота
-      description: Множитель для изменения яркости при повороте (чем выше, тем больше изменение)
+      description: Множитель изменения яркости на каждый шаг
       default: 2.0
       selector:
         number:
@@ -38,10 +35,9 @@ blueprint:
           max: 5.0
           step: 0.5
           mode: slider
-    
+
     single_press_brightness:
       name: Яркость при одинарном нажатии
-      description: Яркость в процентах при одинарном нажатии кнопки
       default: 50
       selector:
         number:
@@ -50,10 +46,9 @@ blueprint:
           step: 1
           unit_of_measurement: "%"
           mode: slider
-    
+
     double_press_brightness:
       name: Яркость при двойном нажатии
-      description: Яркость в процентах при двойном нажатии кнопки
       default: 100
       selector:
         number:
@@ -62,10 +57,9 @@ blueprint:
           step: 1
           unit_of_measurement: "%"
           mode: slider
-    
+
     double_press_delay:
-      name: Задержка для двойного нажатия
-      description: Максимальное время между нажатиями для определения двойного клика (в миллисекундах)
+      name: Порог двойного нажатия (мс)
       default: 500
       selector:
         number:
@@ -74,10 +68,9 @@ blueprint:
           step: 50
           unit_of_measurement: "ms"
           mode: slider
-    
+
     smooth_transition:
       name: Плавный переход
-      description: Включить плавное изменение яркости
       default: true
       selector:
         boolean:
@@ -89,9 +82,8 @@ variables:
   sensitivity_var: !input sensitivity
   single_brightness: !input single_press_brightness
   double_brightness: !input double_press_brightness
-  smooth: !input smooth_transition
-  target_light_var: !input target_light
   double_delay: !input double_press_delay
+  smooth: !input smooth_transition
 
 trigger:
   - platform: event
@@ -101,42 +93,40 @@ trigger:
 
 action:
   - variables:
-      command: "{{ trigger.event. data.command }}"
+      command: "{{ trigger.event.data.command }}"
       cluster_id: "{{ trigger.event.data.cluster_id }}"
-      step_mode: "{{ trigger.event.data.params. step_mode | default(none) }}"
-      step_size: "{{ trigger.event.data. params.step_size | default(0) }}"
-      
+      step_mode: "{{ trigger.event.data.params.step_mode | default(none) }}"
+      step_size: "{{ trigger.event.data.params.step_size | default(0) }}"
+      transition_val: "{{ 0.3 if smooth else 0 }}"
+
   - choose:
-      # Поворот по часовой стрелке (увеличение яркости)
+      # Вращение по часовой стрелке (увеличение яркости)
       - conditions:
           - condition: template
             value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 0 }}"
         sequence:
           - service: light.turn_on
-            target:
-              entity_id: "{{ target_light_var }}"
+            target: !input target_light
             data:
               brightness_step_pct: "{{ (step_size * sensitivity_var) | int }}"
-              transition: "{{ 0.3 if smooth else 0 }}"
-      
-      # Поворот против часовой стрелки (уменьшение яркости)
+              transition: "{{ transition_val }}"
+
+      # Вращение против часовой стрелки (уменьшение яркости)
       - conditions:
           - condition: template
             value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 1 }}"
         sequence:
           - service: light.turn_on
-            target:
-              entity_id: "{{ target_light_var }}"
+            target: !input target_light
             data:
               brightness_step_pct: "{{ -(step_size * sensitivity_var) | int }}"
-              transition: "{{ 0.3 if smooth else 0 }}"
-      
-      # Нажатие кнопки (одинарное или двойное)
+              transition: "{{ transition_val }}"
+
+      # Нажатие (одинарное/двойное по двум toggle подряд)
       - conditions:
           - condition: template
             value_template: "{{ command == 'toggle' and cluster_id == 6 }}"
         sequence:
-          # Ожидаем второе нажатие для определения двойного клика
           - wait_for_trigger:
               - platform: event
                 event_type: zha_event
@@ -147,23 +137,21 @@ action:
             timeout:
               milliseconds: "{{ double_delay }}"
             continue_on_timeout: true
-          
+
           - choose:
-              # Двойное нажатие (если было второе нажатие в течение timeout)
+              # Двойной клик (второе событие toggle пришло до истечения таймаута)
               - conditions:
                   - condition: template
-                    value_template: "{{ wait. trigger is not none }}"
+                    value_template: "{{ wait.trigger is not none }}"
                 sequence:
                   - service: light.turn_on
-                    target:
-                      entity_id: "{{ target_light_var }}"
+                    target: !input target_light
                     data:
                       brightness_pct: "{{ double_brightness }}"
-                      transition: "{{ 0. 5 if smooth else 0 }}"
+                      transition: "{{ 0.5 if smooth else 0 }}"
             default:
-              - service: light. turn_on
-                target:
-                  entity_id: "{{ target_light_var }}"
+              - service: light.turn_on
+                target: !input target_light
                 data:
                   brightness_pct: "{{ single_brightness }}"
                   transition: "{{ 0.5 if smooth else 0 }}"
