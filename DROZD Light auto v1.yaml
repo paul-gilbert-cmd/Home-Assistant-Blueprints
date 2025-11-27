@@ -1,0 +1,299 @@
+blueprint:
+  name: Освещение по движению/присутствию с днём/ночью, сценами, переключением по солнцу/расписанию и авто-выключением при ручном включении
+  description: >
+    Включает свет или выключатели при обнаружении движения/присутствия и выключает их
+    через заданный таймаут, зависящий от режима день/ночь. Ночной режим может определяться
+    по положению солнца или по настраиваемому расписанию. При переходе между режимами
+    автоматически применяются выбранные сцены для дня и ночи. Дополнительно можно
+    автоматически выключать свет, включённый вручную (пользователем), по отдельному таймауту.
+
+  domain: automation
+
+  input:
+    motion_sensors:
+      name: Датчики движения/присутствия
+      description: Выберите один или несколько binary_sensor, которые сообщают о движении или присутствии (состояние 'on' = обнаружено).
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
+
+    target_entities:
+      name: Целевые сущности света/выключателей
+      description: Выберите световые устройства и/или выключатели для управления.
+      selector:
+        target:
+          entity:
+            domain:
+              - light
+              - switch
+
+    day_timeout_seconds:
+      name: Таймаут авто-выключения днём (в секундах)
+      description: Время ожидания перед выключением в дневном режиме.
+      default: 180
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+    night_timeout_seconds:
+      name: Таймаут авто-выключения ночью (в секундах)
+      description: Время ожидания перед выключением в ночном режиме.
+      default: 600
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+    night_mode_source:
+      name: Определение ночного режима
+      description: Выберите способ определения ночного режима: по солнцу или по пользовательскому расписанию.
+      default: sun
+      selector:
+        select:
+          options:
+            - label: Солнце (ниже/выше горизонта)
+              value: sun
+            - label: Пользовательское расписание (время начала/окончания)
+              value: schedule
+
+    schedule_night_start:
+      name: Время начала ночного режима (расписание)
+      description: Используется, если выбран способ «Пользовательское расписание»; игнорируется при способе «Солнце».
+      default: "22:00:00"
+      selector:
+        time: {}
+
+    schedule_night_end:
+      name: Время окончания ночного режима (расписание)
+      description: Используется, если выбран способ «Пользовательское расписание»; игнорируется при способе «Солнце».
+      default: "06:30:00"
+      selector:
+        time: {}
+
+    day_scene:
+      name: Сцена для дневного режима
+      description: Сцена, которая будет применяться при переходе в дневной режим.
+      selector:
+        entity:
+          domain: scene
+          multiple: false
+
+    night_scene:
+      name: Сцена для ночного режима
+      description: Сцена, которая будет применяться при переходе в ночной режим.
+      selector:
+        entity:
+          domain: scene
+          multiple: false
+
+    apply_scene_on_mode_change:
+      name: Автоприменение сцен при смене режима
+      description: Если включено, выбранные сцены применяются при переключении между дневным и ночным режимами.
+      default: true
+      selector:
+        boolean: {}
+
+    manual_on_auto_off_enabled:
+      name: Авто-выключение при ручном включении
+      description: Если включено, свет, включённый вручную (пользователем), будет выключен по таймауту, зависящему от текущего режима.
+      default: true
+      selector:
+        boolean: {}
+
+    manual_on_day_timeout_seconds:
+      name: Таймаут авто-выключения при ручном включении днём (сек)
+      description: Время до выключения, если свет был включён вручную в дневном режиме.
+      default: 900
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+    manual_on_night_timeout_seconds:
+      name: Таймаут авто-выключения при ручном включении ночью (сек)
+      description: Время до выключения, если свет был включён вручную в ночном режиме.
+      default: 1800
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+variables:
+  motion_sensors: !input motion_sensors
+  target_entities: !input target_entities
+  day_timeout_seconds: !input day_timeout_seconds
+  night_timeout_seconds: !input night_timeout_seconds
+  manual_on_day_timeout_seconds: !input manual_on_day_timeout_seconds
+  manual_on_night_timeout_seconds: !input manual_on_night_timeout_seconds
+  night_mode_source: !input night_mode_source
+  schedule_night_start: !input schedule_night_start
+  schedule_night_end: !input schedule_night_end
+  day_scene: !input day_scene
+  night_scene: !input night_scene
+  apply_scene_on_mode_change: !input apply_scene_on_mode_change
+  manual_on_auto_off_enabled: !input manual_on_auto_off_enabled
+
+  is_night_sun: >
+    {{ states('sun.sun') == 'below_horizon' }}
+
+  is_night_schedule: >
+    {% set start = schedule_night_start %}
+    {% set end = schedule_night_end %}
+    {% set now_time = now().time() %}
+    {% set start_time = as_datetime(strptime(start, '%H:%M:%S')).time() %}
+    {% set end_time = as_datetime(strptime(end, '%H:%M:%S')).time() %}
+    {% if start_time <= end_time %}
+      {{ start_time <= now_time <= end_time }}
+    {% else %}
+      {{ now_time >= start_time or now_time <= end_time }}
+    {% endif %}
+
+  is_night: >
+    {{ is_night_schedule if night_mode_source == 'schedule' else is_night_sun }}
+
+  motion_timeout_seconds: >
+    {{ night_timeout_seconds if is_night else day_timeout_seconds }}
+
+  manual_timeout_seconds: >
+    {{ manual_on_night_timeout_seconds if is_night else manual_on_day_timeout_seconds }}
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  # Движение/присутствие ВКЛ -> включить целевые сущности
+  - id: motion_on
+    platform: state
+    entity_id: !input motion_sensors
+    to: 'on'
+
+  # Движение/присутствие ВЫКЛ и выдержан таймаут -> выключить целевые сущности
+  - id: motion_off_timeout
+    platform: state
+    entity_id: !input motion_sensors
+    to: 'off'
+    for:
+      seconds: "{{ motion_timeout_seconds | int }}"
+
+  # Смена режима по солнцу
+  - id: sun_rises
+    platform: state
+    entity_id: sun.sun
+    to: 'above_horizon'
+
+  - id: sun_sets
+    platform: state
+    entity_id: sun.sun
+    to: 'below_horizon'
+
+  # Смена режима по расписанию
+  - id: schedule_night_start_trigger
+    platform: time
+    at: !input schedule_night_start
+
+  - id: schedule_night_end_trigger
+    platform: time
+    at: !input schedule_night_end
+
+  # Ручное включение света: любая целевая лампа/выключатель переключён в ON пользователем
+  - id: manual_on
+    platform: state
+    entity_id: >
+      {{ expand(target_entities.entity_id) | map(attribute='entity_id') | list }}
+    to: 'on'
+
+condition: []
+
+action:
+  - choose:
+      # Движение ВКЛ -> включить цели
+      - conditions:
+          - condition: trigger
+            id: motion_on
+        sequence:
+          - service: homeassistant.turn_on
+            target: !input target_entities
+
+      # Движение ВЫКЛ и таймаут истёк -> выключить цели
+      - conditions:
+          - condition: trigger
+            id: motion_off_timeout
+        sequence:
+          - service: homeassistant.turn_off
+            target: !input target_entities
+
+      # Начался ночной режим (по солнцу или расписанию) -> применить ночную сцену
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ apply_scene_on_mode_change and (
+                  (trigger.id == 'sun_sets' and night_mode_source == 'sun') or
+                  (trigger.id == 'schedule_night_start_trigger' and night_mode_source == 'schedule')
+                ) }}
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ night_scene is not none }}"
+            then:
+              - service: scene.turn_on
+                target:
+                  entity_id: "{{ night_scene }}"
+            else:
+              - logbook.log:
+                  name: "Blueprint"
+                  message: "Ночная сцена не выбрана; пропуск применения."
+                  domain: homeassistant
+
+      # Начался дневной режим (по солнцу или расписанию) -> применить дневную сцену
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ apply_scene_on_mode_change and (
+                  (trigger.id == 'sun_rises' and night_mode_source == 'sun') or
+                  (trigger.id == 'schedule_night_end_trigger' and night_mode_source == 'schedule')
+                ) }}
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ day_scene is not none }}"
+            then:
+              - service: scene.turn_on
+                target:
+                  entity_id: "{{ day_scene }}"
+            else:
+              - logbook.log:
+                  name: "Blueprint"
+                  message: "Дневная сцена не выбрана; пропуск применения."
+                  domain: homeassistant
+
+      # Ручное включение -> если включено и событие инициировано пользователем, запланировать авто-выключение
+      - conditions:
+          - condition: trigger
+            id: manual_on
+          - condition: template
+            value_template: "{{ manual_on_auto_off_enabled }}"
+          # Считаем «ручным», если изменение состояния произошло от пользователя (а не из автоматизации/скрипта)
+          - condition: template
+            value_template: >
+              {{ (trigger.to_state.context and trigger.to_state.context.user_id) is not none }}
+        sequence:
+          - delay:
+              seconds: "{{ manual_timeout_seconds | int }}"
+          # Перед выключением убедиться, что ни один датчик сейчас не показывает движение/присутствие
+          - condition: template
+            value_template: >
+              {{ expand(motion_sensors) | selectattr('state','eq','on') | list | count == 0 }}
+          - service: homeassistant.turn_off
+            target: !input target_entities
+
+    default: []
