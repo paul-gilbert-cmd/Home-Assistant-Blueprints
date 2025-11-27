@@ -42,7 +42,7 @@ blueprint:
     single_press_brightness:
       name: Яркость при одинарном нажатии
       description: Яркость в процентах при одинарном нажатии кнопки
-      default: 1
+      default: 50
       selector:
         number:
           min: 1
@@ -78,6 +78,7 @@ variables:
   single_brightness: !input single_press_brightness
   double_brightness: !input double_press_brightness
   smooth: !input smooth_transition
+  target_light_var: ! input target_light
 
 trigger:
   - platform: event
@@ -87,7 +88,7 @@ trigger:
 
 action:
   - variables:
-      command: "{{ trigger.event.data.command }}"
+      command: "{{ trigger.event. data.command }}"
       cluster_id: "{{ trigger. event.data.cluster_id }}"
       step_mode: "{{ trigger.event.data.params.step_mode | default(none) }}"
       step_size: "{{ trigger.event.data.params.step_size | default(0) }}"
@@ -100,26 +101,22 @@ action:
         sequence:
           - service: light.turn_on
             target:
-              entity_id: !input target_light
+              entity_id: "{{ target_light_var }}"
             data:
-              brightness_step_pct: >
-                {{ (step_size * sensitivity_var) | int }}
-              transition: >
-                {{ 0.3 if smooth else 0 }}
+              brightness_step_pct: "{{ (step_size * sensitivity_var) | int }}"
+              transition: "{{ 0.3 if smooth else 0 }}"
       
       # Поворот против часовой стрелки (уменьшение яркости)
       - conditions:
           - condition: template
             value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 1 }}"
         sequence:
-          - service: light. turn_on
+          - service: light.turn_on
             target:
-              entity_id: !input target_light
+              entity_id: "{{ target_light_var }}"
             data:
-              brightness_step_pct: >
-                {{ -(step_size * sensitivity_var) | int }}
-              transition: >
-                {{ 0.3 if smooth else 0 }}
+              brightness_step_pct: "{{ -(step_size * sensitivity_var) | int }}"
+              transition: "{{ 0.3 if smooth else 0 }}"
       
       # Одинарное нажатие (toggle или включение с заданной яркостью)
       - conditions:
@@ -130,25 +127,22 @@ action:
               # Если свет выключен, включаем с заданной яркостью
               - conditions:
                   - condition: template
-                    value_template: >
-                      {{ is_state(target_light, 'off') }}
+                    value_template: "{{ is_state(target_light_var, 'off') }}"
                 sequence:
                   - service: light.turn_on
                     target:
-                      entity_id: !input target_light
+                      entity_id: "{{ target_light_var }}"
                     data:
-                      brightness_pct: ! input single_press_brightness
-                      transition: >
-                        {{ 0.5 if smooth else 0 }}
+                      brightness_pct: "{{ single_brightness }}"
+                      transition: "{{ 0.5 if smooth else 0 }}"
             default:
               # Если свет включен, устанавливаем заданную яркость
               - service: light.turn_on
                 target:
-                  entity_id: !input target_light
+                  entity_id: "{{ target_light_var }}"
                 data:
-                  brightness_pct: !input single_press_brightness
-                  transition: >
-                    {{ 0.5 if smooth else 0 }}
+                  brightness_pct: "{{ single_brightness }}"
+                  transition: "{{ 0.5 if smooth else 0 }}"
       
       # Двойное нажатие (on command)
       - conditions:
@@ -157,11 +151,10 @@ action:
         sequence:
           - service: light.turn_on
             target:
-              entity_id: !input target_light
+              entity_id: "{{ target_light_var }}"
             data:
-              brightness_pct: !input double_press_brightness
-              transition: >
-                {{ 0.5 if smooth else 0 }}
+              brightness_pct: "{{ double_brightness }}"
+              transition: "{{ 0.5 if smooth else 0 }}"
       
       # Команда выключения (если есть)
       - conditions:
@@ -170,7 +163,6 @@ action:
         sequence:
           - service: light.turn_off
             target:
-              entity_id: !input target_light
+              entity_id: "{{ target_light_var }}"
             data:
-              transition: >
-                {{ 0.5 if smooth else 0 }}
+              transition: "{{ 0.5 if smooth else 0 }}"
