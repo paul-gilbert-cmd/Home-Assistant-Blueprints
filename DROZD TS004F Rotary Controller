@@ -159,7 +159,7 @@ action:
                       entity_id: "{{ target_light_var }}"
                     data:
                       brightness_pct: "{{ double_brightness }}"
-                      transition: "{{ 0.5 if smooth else 0 }}"
+                      transition: "{{ 0. 5 if smooth else 0 }}"
             
             # Одинарное нажатие (timeout истек, второго нажатия не было)
             default:
