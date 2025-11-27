@@ -63,6 +63,18 @@ blueprint:
           unit_of_measurement: "%"
           mode: slider
     
+    double_press_delay:
+      name: Задержка для двойного нажатия
+      description: Максимальное время между нажатиями для определения двойного клика (в миллисекундах)
+      default: 500
+      selector:
+        number:
+          min: 200
+          max: 1000
+          step: 50
+          unit_of_measurement: "ms"
+          mode: slider
+    
     smooth_transition:
       name: Плавный переход
       description: Включить плавное изменение яркости
@@ -78,7 +90,8 @@ variables:
   single_brightness: !input single_press_brightness
   double_brightness: !input double_press_brightness
   smooth: !input smooth_transition
-  target_light_var: ! input target_light
+  target_light_var: !input target_light
+  double_delay: !input double_press_delay
 
 trigger:
   - platform: event
@@ -89,9 +102,9 @@ trigger:
 action:
   - variables:
       command: "{{ trigger.event. data.command }}"
-      cluster_id: "{{ trigger. event.data.cluster_id }}"
-      step_mode: "{{ trigger.event.data.params.step_mode | default(none) }}"
-      step_size: "{{ trigger.event.data.params.step_size | default(0) }}"
+      cluster_id: "{{ trigger.event.data.cluster_id }}"
+      step_mode: "{{ trigger.event.data.params. step_mode | default(none) }}"
+      step_size: "{{ trigger.event.data. params.step_size | default(0) }}"
       
   - choose:
       # Поворот по часовой стрелке (увеличение яркости)
@@ -118,51 +131,41 @@ action:
               brightness_step_pct: "{{ -(step_size * sensitivity_var) | int }}"
               transition: "{{ 0.3 if smooth else 0 }}"
       
-      # Одинарное нажатие (toggle или включение с заданной яркостью)
+      # Нажатие кнопки (одинарное или двойное)
       - conditions:
           - condition: template
             value_template: "{{ command == 'toggle' and cluster_id == 6 }}"
         sequence:
+          # Ожидаем второе нажатие для определения двойного клика
+          - wait_for_trigger:
+              - platform: event
+                event_type: zha_event
+                event_data:
+                  device_id: !input controller
+                  cluster_id: 6
+                  command: toggle
+            timeout:
+              milliseconds: "{{ double_delay }}"
+            continue_on_timeout: true
+          
           - choose:
-              # Если свет выключен, включаем с заданной яркостью
+              # Двойное нажатие (если было второе нажатие в течение timeout)
               - conditions:
                   - condition: template
-                    value_template: "{{ is_state(target_light_var, 'off') }}"
+                    value_template: "{{ wait. trigger is not none }}"
                 sequence:
                   - service: light.turn_on
                     target:
                       entity_id: "{{ target_light_var }}"
                     data:
-                      brightness_pct: "{{ single_brightness }}"
+                      brightness_pct: "{{ double_brightness }}"
                       transition: "{{ 0.5 if smooth else 0 }}"
+            
+            # Одинарное нажатие (timeout истек, второго нажатия не было)
             default:
-              # Если свет включен, устанавливаем заданную яркость
-              - service: light.turn_on
+              - service: light. turn_on
                 target:
                   entity_id: "{{ target_light_var }}"
                 data:
                   brightness_pct: "{{ single_brightness }}"
                   transition: "{{ 0.5 if smooth else 0 }}"
-      
-      # Двойное нажатие (on command)
-      - conditions:
-          - condition: template
-            value_template: "{{ command == 'on' and cluster_id == 6 }}"
-        sequence:
-          - service: light.turn_on
-            target:
-              entity_id: "{{ target_light_var }}"
-            data:
-              brightness_pct: "{{ double_brightness }}"
-              transition: "{{ 0.5 if smooth else 0 }}"
-      
-      # Команда выключения (если есть)
-      - conditions:
-          - condition: template
-            value_template: "{{ command == 'off' and cluster_id == 6 }}"
-        sequence:
-          - service: light.turn_off
-            target:
-              entity_id: "{{ target_light_var }}"
-            data:
-              transition: "{{ 0.5 if smooth else 0 }}"
