@@ -1,5 +1,5 @@
 blueprint:
-  name: ZHA - TS004F Rotary Controller (rotation + single press, min 1% fixed)
+  name: DROZD ZHA - TS004F Rotary Controller "Dimmer" (rotation + single press, min 1% fixed)
   description: |
     Управление яркостью по событиям ZHA от TS004F:
       - Вращение (cluster 0x0008, command: step, step_mode 0/1): плавное увеличение / уменьшение яркости.
@@ -12,9 +12,9 @@ blueprint:
 
   input:
     controller:
-      name: Контроллер ZHA
+      name: Устройства ZHA
       description: |
-        Выберите устройство (ротари контроллер).
+        Выберите свой TS004F
       selector:
         device:
           integration: zha
@@ -23,7 +23,7 @@ blueprint:
     target_lights:
       name: Целевые светильники
       description: |
-        Выберите одну или несколько сущностей / группу / устройство / зону (используются light.*).
+        Выберите сущность
       selector:
         target:
           entity:
@@ -32,8 +32,8 @@ blueprint:
     sensitivity:
       name: Чувствительность вращения
       description: |
-        Итоговый прирост уровней: raw_delta = step_size * sensitivity (ограничивается max_delta_level).
-      default: 1.0
+        
+      default: 0.5
       selector:
         number:
           min: 0.1
@@ -54,10 +54,10 @@ blueprint:
           mode: slider
 
     single_press_brightness:
-      name: Яркость пресета (%)
+      name: Яркость при одиночном нажатии
       description: |
-        Значение для одинарного нажатия. Минимум 1%.
-      default: 50
+        Минимум 1%.
+      default: 1
       selector:
         number:
           min: 1
@@ -83,7 +83,7 @@ blueprint:
       name: Переход при нажатии (сек)
       description: |
         Время плавного изменения яркости при toggle.
-      default: 0.3
+      default: 0
       selector:
         number:
           min: 0
