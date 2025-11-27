@@ -1,11 +1,13 @@
 blueprint:
-  name: ZHA - TS004F Rotary Controller (rotation restored + long press)
+  name: ZHA - TS004F Rotary Controller (rotation + double press)
   description: |
     Управление яркостью по событиям ZHA от TS004F:
-      - Вращение (cluster 0x0008, command: step, step_mode 0/1): увеличение / уменьшение яркости (с чувствительностью и порогом ≥1%).
-      - Одиночный клик (cluster 0x0006, command: toggle): установка single_bright.
-      - Долгое нажатие (cluster 0x0008, command: move → stop/timeout): установка double_bright.
-    Мин. яркость не опускается ниже ~1% (уровень 3/255). Поддержка нескольких светильников.
+      - Вращение (cluster 0x0008, command: step, step_mode 0/1): плавное увеличение/уменьшение яркости (с порогом ≥1%).
+      - Одиночный клик / двойной клик (cluster 0x0006, command: toggle):
+          * Одинарный → preset single_bright.
+          * Двойной → preset double_bright.
+    Минимальная яркость не опускается ниже ~1% (уровень 3/255).
+    Параметры cycle_mode и cycle_tolerance сохранены, но не используются (оставлены для совместимости).
 
   domain: automation
 
@@ -53,9 +55,9 @@ blueprint:
           mode: slider
 
     single_press_brightness:
-      name: Яркость одиночного нажатия (%)
+      name: Яркость пресета 1 (%)
       description: |
-        Применяется при toggle. Минимум 1%.
+        Значение для одинарного нажатия. Минимум 1%.
       default: 50
       selector:
         number:
@@ -66,9 +68,9 @@ blueprint:
           mode: slider
 
     double_press_brightness:
-      name: Яркость долгого нажатия (%)
+      name: Яркость пресета 2 (%)
       description: |
-        Применяется после удержания (move → stop/timeout). Минимум 1%.
+        Значение для двойного нажатия. Минимум 1%.
       default: 100
       selector:
         number:
@@ -78,15 +80,36 @@ blueprint:
           unit_of_measurement: "%"
           mode: slider
 
-    hold_delay_ms:
-      name: Время удержания (мс)
+    cycle_mode:
+      name: (НЕ ИСПОЛЬЗУЕТСЯ) Режим циклического переключения
       description: |
-        Максимальное время ожидания stop. Если stop не пришёл — применяем double_bright по тайм-ауту.
-      default: 600
+        Сохранено для совместимости. Игнорируется.
+      default: true
+      selector:
+        boolean:
+
+    cycle_tolerance:
+      name: (НЕ ИСПОЛЬЗУЕТСЯ) Допуск сравнения (%)
+      description: |
+        Сохранено для совместимости. Игнорируется.
+      default: 5
       selector:
         number:
-          min: 300
-          max: 2000
+          min: 1
+          max: 20
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+
+    double_press_delay:
+      name: Тайм-аут двойного нажатия (мс)
+      description: |
+        Интервал ожидания второго toggle. При втором toggle внутри интервала → двойной клик.
+      default: 500
+      selector:
+        number:
+          min: 250
+          max: 1200
           step: 50
           unit_of_measurement: "ms"
           mode: slider
@@ -105,9 +128,9 @@ blueprint:
           mode: slider
 
     press_transition:
-      name: Переход при нажатии/удержании (сек)
+      name: Переход при применении пресета (сек)
       description: |
-        Время плавного изменения яркости при toggle и после удержания.
+        Время плавного изменения яркости при нажатии.
       default: 0.3
       selector:
         number:
@@ -135,9 +158,9 @@ variables:
   double_bright_raw: !input double_press_brightness
   single_bright: "{{ [single_bright_raw | int, 1] | max }}"
   double_bright: "{{ [double_bright_raw | int, 1] | max }}"
+  dbl_delay: !input double_press_delay
   rot_trans: !input rotation_transition
   press_trans: !input press_transition
-  hold_ms: !input hold_delay_ms
   debug: !input enable_debug
   tgt: !input target_lights
   min_level: 3  # ~1%
@@ -154,7 +177,6 @@ action:
       cluster_id: "{{ trigger.event.data.cluster_id | int }}"
       step_mode: "{{ trigger.event.data.params.step_mode | default(-1) | int }}"
       step_size: "{{ trigger.event.data.params.step_size | default(0) | int }}"
-      # Список light.* сущностей
       light_entities: >
         {% set res = [] %}
         {% if tgt.entity_id is defined %}
@@ -171,7 +193,7 @@ action:
 
   - choose:
       ######################################################################
-      # Вращение + (step_mode 0) — восстановлено
+      # Вращение + (step_mode 0)
       ######################################################################
       - conditions:
           - condition: template
@@ -233,7 +255,7 @@ action:
                         [Rotate +] step_size={{ step_size }} sensitivity={{ sensitivity }} count={{ lights_count }}
 
       ######################################################################
-      # Вращение - (step_mode 1) — восстановлено
+      # Вращение - (step_mode 1)
       ######################################################################
       - conditions:
           - condition: template
@@ -295,57 +317,58 @@ action:
                         [Rotate -] step_size={{ step_size }} sensitivity={{ sensitivity }} count={{ lights_count }}
 
       ######################################################################
-      # Долгое нажатие (move → stop/timeout) — новая логика
+      # Toggle (одинарный / двойной)
       ######################################################################
       - conditions:
           - condition: template
-            value_template: "{{ cluster_id == 8 and command == 'move' }}"
+            value_template: "{{ command == 'toggle' and cluster_id == 6 }}"
         sequence:
           - wait_for_trigger:
               - platform: event
                 event_type: zha_event
                 event_data:
                   device_id: !input controller
-                  cluster_id: 8
-                  command: stop
+                  cluster_id: 6
+                  command: toggle
             timeout:
-              milliseconds: "{{ hold_ms }}"
+              milliseconds: "{{ dbl_delay }}"
             continue_on_timeout: true
-          - service: light.turn_on
-            target: !input target_lights
-            data:
-              brightness_pct: "{{ double_bright }}"
-              transition: "{{ press_trans }}"
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ debug }}"
-                sequence:
-                  - service: system_log.write
-                    data:
-                      level: info
-                      message: >
-                        [Long Press] applied double_bright={{ double_bright }} (stop или timeout {{ hold_ms }}ms)
 
-      ######################################################################
-      # Одиночный клик (toggle)
-      ######################################################################
-      - conditions:
-          - condition: template
-            value_template: "{{ command == 'toggle' and cluster_id == 6 }}"
-        sequence:
-          - service: light.turn_on
-            target: !input target_lights
-            data:
-              brightness_pct: "{{ single_bright }}"
-              transition: "{{ press_trans }}"
           - choose:
+              # Двойной клик
               - conditions:
                   - condition: template
-                    value_template: "{{ debug }}"
+                    value_template: "{{ wait.trigger is not none }}"
                 sequence:
-                  - service: system_log.write
+                  - service: light.turn_on
+                    target: !input target_lights
                     data:
-                      level: info
-                      message: >
-                        [Single Click] brightness_pct={{ single_bright }}
+                      brightness_pct: "{{ double_bright }}"
+                      transition: "{{ press_trans }}"
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ debug }}"
+                        sequence:
+                          - service: system_log.write
+                            data:
+                              level: info
+                              message: >
+                                [Double Press] brightness_pct={{ double_bright }} delay={{ dbl_delay }}ms
+            # Одинарный клик
+            default:
+              - service: light.turn_on
+                target: !input target_lights
+                data:
+                  brightness_pct: "{{ single_bright }}"
+                  transition: "{{ press_trans }}"
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ debug }}"
+                    sequence:
+                      - service: system_log.write
+                        data:
+                          level: info
+                          message: >
+                            [Single Press] brightness_pct={{ single_bright }}
