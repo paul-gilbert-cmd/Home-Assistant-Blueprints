@@ -39,7 +39,7 @@ blueprint:
           min: 1
           max: 86400
           unit_of_measurement: seconds
-          mode: slide
+          mode: box
 
     night_timeout_seconds:
       name: "Таймаут авто-выключения ночью (в секундах)"
@@ -50,7 +50,7 @@ blueprint:
           min: 1
           max: 86400
           unit_of_measurement: seconds
-          mode: slide
+          mode: box
 
     enable_night_mode:
       name: "Включить ночной режим"
@@ -148,7 +148,7 @@ blueprint:
           min: 1
           max: 86400
           unit_of_measurement: seconds
-          mode: slide
+          mode: box
 
     manual_on_night_timeout_seconds:
       name: "Таймаут авто-выключения при ручном включении ночью (сек)"
@@ -159,7 +159,7 @@ blueprint:
           min: 1
           max: 86400
           unit_of_measurement: seconds
-          mode: slide
+          mode: box
 
 variables:
   motion_sensors: !input motion_sensors
