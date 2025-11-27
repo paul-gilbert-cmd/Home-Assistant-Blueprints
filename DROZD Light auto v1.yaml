@@ -1,11 +1,13 @@
 blueprint:
-  name: "Освещение по движению/присутствию с днём/ночью, сценами, переключением по солнцу/расписанию и авто-выключением при ручном включении"
+  name: DROZD light auto v1
   description: >
     Включает свет или выключатели при обнаружении движения/присутствия и выключает их
     через заданный таймаут, зависящий от режима день/ночь. Ночной режим может определяться
-    по положению солнца или по настраиваемому расписанию. При переходе между режимами
-    автоматически применяются выбранные сцены для дня и ночи. Дополнительно можно
-    автоматически выключать свет, включённый вручную (пользователем), по отдельному таймауту.
+    по положению солнца, по положению солнца с пользовательским смещением по времени
+    (например, за 1 час до заката и до 1 часа после восхода), либо по настраиваемому расписанию.
+    При переходе между режимами автоматически применяются выбранные сцены для дня и ночи.
+    Дополнительно можно автоматически выключать свет, включённый вручную (пользователем),
+    по отдельному таймауту. Ночной режим можно деактивировать полностью.
 
   domain: automation
 
@@ -37,7 +39,7 @@ blueprint:
           min: 1
           max: 86400
           unit_of_measurement: seconds
-          mode: box
+          mode: slide
 
     night_timeout_seconds:
       name: "Таймаут авто-выключения ночью (в секундах)"
@@ -48,31 +50,62 @@ blueprint:
           min: 1
           max: 86400
           unit_of_measurement: seconds
-          mode: box
+          mode: slide
+
+    enable_night_mode:
+      name: "Включить ночной режим"
+      description: "Если выключено, ночной режим не используется (всегда считается дневной режим)."
+      default: true
+      selector:
+        boolean: {}
 
     night_mode_source:
       name: "Определение ночного режима"
-      description: "Выберите способ определения ночного режима: по солнцу или по пользовательскому расписанию."
+      description: "Выберите способ определения ночного режима: по солнцу, по солнцу со смещением или по пользовательскому расписанию."
       default: sun
       selector:
         select:
           options:
             - label: "Солнце (ниже/выше горизонта)"
               value: sun
+            - label: "Солнце со смещением (до/после заката и до/после восхода)"
+              value: sun_offset
             - label: "Пользовательское расписание (время начала/окончания)"
               value: schedule
 
+    sunset_offset_minutes:
+      name: "Смещение относительно заката (минуты)"
+      description: "Для режима «Солнце со смещением»: когда начинается ночь относительно заката. Отрицательное — до заката, положительное — после."
+      default: -60
+      selector:
+        number:
+          min: -720
+          max: 720
+          unit_of_measurement: minutes
+          mode: box
+
+    sunrise_offset_minutes:
+      name: "Смещение относительно восхода (минуты)"
+      description: "Для режима «Солнце со смещением»: когда заканчивается ночь относительно восхода. Отрицательное — до восхода, положительное — после."
+      default: 60
+      selector:
+        number:
+          min: -720
+          max: 720
+          unit_of_measurement: minutes
+          mode: box
+
     schedule_night_start:
       name: "Время начала ночного режима (расписание)"
-      description: "Используется, если выбран способ «Пользовательское расписание»; игнорируется при способе «Солнце»."
-      default: "22:00:00"
+      description: "Используется, если выбран способ «Пользовательское расписание»; игнорируется при способах «Солнце» и «Солнце со смещением»."
+      default: "23:45:00"
       selector:
         time: {}
 
     schedule_night_end:
       name: "Время окончания ночного режима (расписание)"
-      description: "Используется, если выбран способ «Пользовательское расписание»; игнорируется при способе «Солнце»."
-      default: "06:30:00"
+      description: "Используется, если выбран способ «Пользовательское расписание»; игнорируется при способах «Солнце» и «Солнце со смещением»."
+      default: "07:00:00"
       selector:
         time: {}
 
@@ -115,7 +148,7 @@ blueprint:
           min: 1
           max: 86400
           unit_of_measurement: seconds
-          mode: box
+          mode: slide
 
     manual_on_night_timeout_seconds:
       name: "Таймаут авто-выключения при ручном включении ночью (сек)"
@@ -126,7 +159,7 @@ blueprint:
           min: 1
           max: 86400
           unit_of_measurement: seconds
-          mode: box
+          mode: slide
 
 variables:
   motion_sensors: !input motion_sensors
@@ -135,17 +168,49 @@ variables:
   night_timeout_seconds: !input night_timeout_seconds
   manual_on_day_timeout_seconds: !input manual_on_day_timeout_seconds
   manual_on_night_timeout_seconds: !input manual_on_night_timeout_seconds
+
+  enable_night_mode: !input enable_night_mode
   night_mode_source: !input night_mode_source
   schedule_night_start: !input schedule_night_start
   schedule_night_end: !input schedule_night_end
+
+  sunset_offset_minutes: !input sunset_offset_minutes
+  sunrise_offset_minutes: !input sunrise_offset_minutes
+  sunset_offset_seconds: >
+    {{ (sunset_offset_minutes | int) * 60 }}
+  sunrise_offset_seconds: >
+    {{ (sunrise_offset_minutes | int) * 60 }}
+
   day_scene: !input day_scene
   night_scene: !input night_scene
   apply_scene_on_mode_change: !input apply_scene_on_mode_change
   manual_on_auto_off_enabled: !input manual_on_auto_off_enabled
 
+  # Базовое определение ночи по солнцу (без смещения)
   is_night_sun: >
     {{ states('sun.sun') == 'below_horizon' }}
 
+  # Ночь по солнцу со смещением:
+  # - Днём: ночь начинается в (время следующего заката + смещение)
+  # - Ночью: ночь заканчивается в (время следующего восхода + смещение)
+  # Если атрибуты недоступны, используем базовое определение по горизонту.
+  is_night_sun_offset: >
+    {% set now_ts = as_timestamp(now()) %}
+    {% set next_set = state_attr('sun.sun','next_setting') %}
+    {% set next_rise = state_attr('sun.sun','next_rising') %}
+    {% if not next_set or not next_rise %}
+      {{ states('sun.sun') == 'below_horizon' }}
+    {% else %}
+      {% set next_set_ts = as_timestamp(next_set) + sunset_offset_seconds %}
+      {% set next_rise_ts = as_timestamp(next_rise) + sunrise_offset_seconds %}
+      {% if states('sun.sun') == 'above_horizon' %}
+        {{ now_ts >= next_set_ts }}
+      {% else %}
+        {{ now_ts <= next_rise_ts }}
+      {% endif %}
+    {% endif %}
+
+  # Ночь по расписанию (поддерживает интервалы, переходящие через полночь)
   is_night_schedule: >
     {% set start = schedule_night_start %}
     {% set end = schedule_night_end %}
@@ -158,8 +223,17 @@ variables:
       {{ now_time >= start_time or now_time <= end_time }}
     {% endif %}
 
+  # Итог: если ночной режим выключен, всегда день; иначе выбираем источник
   is_night: >
-    {{ is_night_schedule if night_mode_source == 'schedule' else is_night_sun }}
+    {% if not enable_night_mode %}
+      false
+    {% elif night_mode_source == 'schedule' %}
+      {{ is_night_schedule }}
+    {% elif night_mode_source == 'sun_offset' %}
+      {{ is_night_sun_offset }}
+    {% else %}
+      {{ is_night_sun }}
+    {% endif %}
 
   motion_timeout_seconds: >
     {{ night_timeout_seconds if is_night else day_timeout_seconds }}
@@ -185,7 +259,7 @@ trigger:
     for:
       seconds: "{{ motion_timeout_seconds | int }}"
 
-  # Смена режима по солнцу
+  # Смена режима по солнцу (без смещения)
   - id: sun_rises
     platform: state
     entity_id: sun.sun
@@ -232,12 +306,12 @@ action:
           - service: homeassistant.turn_off
             target: !input target_entities
 
-      # Начался ночной режим (по солнцу или расписанию) -> применить ночную сцену
+      # Начался ночной режим -> применить ночную сцену (если ночной режим включен)
       - conditions:
           - condition: template
             value_template: >
-              {{ apply_scene_on_mode_change and (
-                  (trigger.id == 'sun_sets' and night_mode_source == 'sun') or
+              {{ apply_scene_on_mode_change and enable_night_mode and (
+                  (trigger.id == 'sun_sets' and night_mode_source in ['sun','sun_offset']) or
                   (trigger.id == 'schedule_night_start_trigger' and night_mode_source == 'schedule')
                 ) }}
         sequence:
@@ -254,13 +328,14 @@ action:
                   message: "Ночная сцена не выбрана; пропуск применения."
                   domain: homeassistant
 
-      # Начался дневной режим (по солнцу или расписанию) -> применить дневную сцену
+      # Начался дневной режим -> применить дневную сцену
       - conditions:
           - condition: template
             value_template: >
               {{ apply_scene_on_mode_change and (
-                  (trigger.id == 'sun_rises' and night_mode_source == 'sun') or
-                  (trigger.id == 'schedule_night_end_trigger' and night_mode_source == 'schedule')
+                  (trigger.id == 'sun_rises' and night_mode_source in ['sun','sun_offset']) or
+                  (trigger.id == 'schedule_night_end_trigger' and night_mode_source == 'schedule') or
+                  (not enable_night_mode and trigger.id in ['sun_rises','sun_sets','schedule_night_start_trigger','schedule_night_end_trigger'])
                 ) }}
         sequence:
           - if:
