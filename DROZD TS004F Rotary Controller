@@ -1,18 +1,18 @@
 blueprint:
-  name: ZHA - TS004F Rotary Controller (responsive per-entity min1%)
+  name: ZHA - TS004F Rotary Controller (fix target extraction, queued)
   description: |
-    Быстрое и плавное управление яркостью по ZHA событиям от ротари контроллера TS004F (или совместимого):
-    - Вращение (cluster 0x0008, command: step): увеличение / уменьшение яркости.
-    - Одинарное нажатие (cluster 0x0006, command: toggle): установка фиксированной яркости.
-    - Двойное нажатие: два toggle подряд в заданном интервале.
-    Для нескольких световых сущностей каждая обрабатывается индивидуально с ограничением >=1%.
+    Управление яркостью по ZHA событиям ротари контроллера:
+    - Вращение (cluster 0x0008, command: step): увеличение/уменьшение яркости, с ограничением минимальной яркости ~1% (уровень 3/255).
+    - Одинарный клик (cluster 0x0006, toggle): установка фиксированной яркости.
+    - Двойной клик: два toggle подряд в заданный интервал.
+    Исправления: корректное извлечение light сущностей из target (одна/список/группа/зона/устройство), стабильная проверка wait.trigger.
+
   domain: automation
 
   input:
     controller:
       name: Контроллер ZHA
-      description: |
-        Выберите устройство ZHA (ротари контроллер).
+      description: Выберите устройство (ротари контроллер)
       selector:
         device:
           integration: zha
@@ -20,8 +20,7 @@ blueprint:
 
     target_lights:
       name: Целевые светильники
-      description: |
-        Выберите одну или несколько сущностей / групп / устройств / зон (обрабатываются только light.*).
+      description: Можно выбрать одну или несколько сущностей / группы / устройства / зоны
       selector:
         target:
           entity:
@@ -29,9 +28,7 @@ blueprint:
 
     sensitivity:
       name: Чувствительность поворота
-      description: |
-        Множитель тонкости изменения. Итоговый прирост яркости (в уровнях 0–255) = step_size * sensitivity.
-        При большом шаге от устройства можно снизить чувствительность.
+      description: Множитель для тонкой настройки шага (уровни 0–255): delta = step_size * sensitivity, обрезается max_delta_level
       default: 1.0
       selector:
         number:
@@ -41,9 +38,8 @@ blueprint:
           mode: slider
 
     max_delta_level:
-      name: Максимальный прирост/убыль за один шаг (уровни 0–255)
-      description: |
-        Ограничивает слишком большие скачки (например при быстром вращении). После умножения step_size*sensitivity прирост будет обрезан.
+      name: Максимальный прирост/убыль за шаг (уровни 0–255)
+      description: Ограничивает скачки при быстром вращении
       default: 40
       selector:
         number:
@@ -54,8 +50,6 @@ blueprint:
 
     single_press_brightness:
       name: Яркость одинарного нажатия (%)
-      description: |
-        Точное значение яркости при одиночном клике (минимум 1%).
       default: 50
       selector:
         number:
@@ -67,8 +61,6 @@ blueprint:
 
     double_press_brightness:
       name: Яркость двойного нажатия (%)
-      description: |
-        Точное значение при двойном клике (минимум 1%).
       default: 100
       selector:
         number:
@@ -80,9 +72,8 @@ blueprint:
 
     dbl_click_delay:
       name: Интервал двойного клика (мс)
-      description: |
-        Максимальная пауза между двумя toggle для распознавания двойного нажатия.
-      default: 600
+      description: Максимальная пауза между двумя toggle
+      default: 700
       selector:
         number:
           min: 250
@@ -93,8 +84,6 @@ blueprint:
 
     rotation_transition:
       name: Переход при вращении (сек)
-      description: |
-        Время плавного изменения при каждом шаге вращения. 0 = максимально отзывчиво.
       default: 0
       selector:
         number:
@@ -106,8 +95,6 @@ blueprint:
 
     press_transition:
       name: Переход при нажатии (сек)
-      description: |
-        Время плавного изменения яркости при одинарном/двойном нажатии.
       default: 0.3
       selector:
         number:
@@ -137,7 +124,26 @@ variables:
   rot_trans: !input rotation_transition
   press_trans: !input press_transition
   debug: !input enable_debug
+
+  # Сырой target
   tgt: !input target_lights
+
+  # Извлекаем массив light.* из target: поддержка строки/массива entity_id, а также групп/устройств
+  light_entities: >
+    {% set res = [] %}
+    {% if tgt.entity_id is defined %}
+      {% set entities = tgt.entity_id if tgt.entity_id is iterable and (tgt.entity_id is not string) else [tgt.entity_id] %}
+      {% for e in entities %}
+        {% if e is string and e.startswith('light.') %}
+          {% set res = res + [e] %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+    # NOTE: Если выбраны группа/устройство/зона без явных entity_id, Home Assistant развернёт их в целевых вызовах.
+    {{ res }}
+
+  lights_count: "{{ light_entities | length }}"
+  min_level: 3   # ~1% на шкале 0-255
 
 trigger:
   - platform: event
@@ -151,19 +157,6 @@ action:
       cluster_id: "{{ trigger.event.data.cluster_id | int }}"
       step_mode: "{{ trigger.event.data.params.step_mode | default(-1) | int }}"
       step_size: "{{ trigger.event.data.params.step_size | default(0) | int }}"
-      # Список отдельных light.* сущностей
-      light_entities: >
-        {% set ents = [] %}
-        {% if tgt.entity_id is defined %}
-          {% for e in tgt.entity_id %}
-            {% if e.startswith('light.') %}
-              {% set ents = ents + [e] %}
-            {% endif %}
-          {% endfor %}
-        {% endif %}
-        {{ ents }}
-      lights_count: "{{ light_entities | length }}"
-      min_level: 3   # ~1% на шкале 0-255
 
   - choose:
       ######################################################################
@@ -173,35 +166,53 @@ action:
           - condition: template
             value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 0 }}"
         sequence:
-          - repeat:
-              for_each: "{{ light_entities }}"
-              sequence:
-                - variables:
-                    entity_id: "{{ repeat.item }}"
-                    current_level: >
-                      {% set st = states(entity_id) %}
-                      {% set bri = state_attr(entity_id, 'brightness') %}
-                      {% if st == 'off' %}
-                        0
-                      {% elif bri is number %}
-                        {{ bri }}
-                      {% else %}
-                        255
-                      {% endif %}
-                    raw_delta: "{{ (step_size * sensitivity) | float }}"
-                    clamped_delta: >
-                      {% if raw_delta > max_delta %}{{ max_delta }}
-                      {% else %}{{ raw_delta }}
-                      {% endif %}
-                    new_level_raw: "{{ current_level | float + clamped_delta }}"
-                    new_level_hi: "{{ [new_level_raw, 255] | min }}"
-                    new_level: "{{ [new_level_hi, min_level] | max | round(0) }}"
-                - service: light.turn_on
-                  data:
-                    brightness: "{{ new_level }}"
-                    transition: "{{ rot_trans }}"
-                  target:
-                    entity_id: "{{ entity_id }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ lights_count > 0 }}"
+                sequence:
+                  - repeat:
+                      for_each: "{{ light_entities }}"
+                      sequence:
+                        - variables:
+                            entity_id: "{{ repeat.item }}"
+                            current_level: >
+                              {% set st = states(entity_id) %}
+                              {% set bri = state_attr(entity_id, 'brightness') %}
+                              {% if st == 'off' %}
+                                0
+                              {% elif bri is number %}
+                                {{ bri }}
+                              {% else %}
+                                255
+                              {% endif %}
+                            raw_delta: "{{ (step_size * sensitivity) | float }}"
+                            clamped_delta: >
+                              {% if raw_delta > max_delta %}{{ max_delta }}{% else %}{{ raw_delta }}{% endif %}
+                            new_level_raw: "{{ current_level | float + clamped_delta }}"
+                            new_level_hi: "{{ [new_level_raw, 255] | min }}"
+                            new_level: "{{ [new_level_hi, min_level] | max | round(0) }}"
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ entity_id }}"
+                          data:
+                            brightness: "{{ new_level }}"
+                            transition: "{{ rot_trans }}"
+            default:
+              # Если light_entities пуст (например выбран target через группу/зону/устройство),
+              # отдаем относительный шаг на весь target как fallback
+              - variables:
+                  pct_step_raw: "{{ (step_size / 254 * 100) * sensitivity }}"
+                  pct_step_limited: >
+                    {% set v = pct_step_raw %}
+                    {% if v > 40 %}40{% elif v < 1 %}1{% else %}{{ v | round(0) }}{% endif %}
+                  pct_step: "{{ pct_step_limited | int }}"
+              - service: light.turn_on
+                target: !input target_lights
+                data:
+                  brightness_step_pct: "{{ pct_step }}"
+                  transition: "{{ rot_trans }}"
+
           - choose:
               - conditions:
                   - condition: template
@@ -212,8 +223,7 @@ action:
                       level: info
                       message: >
                         [Rotary +] step_size={{ step_size }} sensitivity={{ sensitivity }}
-                        applied_delta={{ (step_size * sensitivity) | float }} clamped={{ clamped_delta if lights_count>0 else 'n/a' }}
-                        count={{ lights_count }}
+                        lights_count={{ lights_count }}
 
       ######################################################################
       # Вращение против часовой стрелки (уменьшение)
@@ -222,35 +232,51 @@ action:
           - condition: template
             value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 1 }}"
         sequence:
-          - repeat:
-              for_each: "{{ light_entities }}"
-              sequence:
-                - variables:
-                    entity_id: "{{ repeat.item }}"
-                    current_level: >
-                      {% set st = states(entity_id) %}
-                      {% set bri = state_attr(entity_id, 'brightness') %}
-                      {% if st == 'off' %}
-                        0
-                      {% elif bri is number %}
-                        {{ bri }}
-                      {% else %}
-                        255
-                      {% endif %}
-                    raw_delta: "{{ (step_size * sensitivity) | float }}"
-                    clamped_delta: >
-                      {% if raw_delta > max_delta %}{{ max_delta }}
-                      {% else %}{{ raw_delta }}
-                      {% endif %}
-                    new_level_raw: "{{ current_level | float - clamped_delta }}"
-                    above_min: "{{ new_level_raw if new_level_raw > min_level else min_level }}"
-                    new_level: "{{ [above_min, 255] | min | round(0) }}"
-                - service: light.turn_on
-                  data:
-                    brightness: "{{ new_level }}"
-                    transition: "{{ rot_trans }}"
-                  target:
-                    entity_id: "{{ entity_id }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ lights_count > 0 }}"
+                sequence:
+                  - repeat:
+                      for_each: "{{ light_entities }}"
+                      sequence:
+                        - variables:
+                            entity_id: "{{ repeat.item }}"
+                            current_level: >
+                              {% set st = states(entity_id) %}
+                              {% set bri = state_attr(entity_id, 'brightness') %}
+                              {% if st == 'off' %}
+                                0
+                              {% elif bri is number %}
+                                {{ bri }}
+                              {% else %}
+                                255
+                              {% endif %}
+                            raw_delta: "{{ (step_size * sensitivity) | float }}"
+                            clamped_delta: >
+                              {% if raw_delta > max_delta %}{{ max_delta }}{% else %}{{ raw_delta }}{% endif %}
+                            new_level_raw: "{{ current_level | float - clamped_delta }}"
+                            above_min: "{{ new_level_raw if new_level_raw > min_level else min_level }}"
+                            new_level: "{{ [above_min, 255] | min | round(0) }}"
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ entity_id }}"
+                          data:
+                            brightness: "{{ new_level }}"
+                            transition: "{{ rot_trans }}"
+            default:
+              - variables:
+                  pct_step_raw: "{{ (step_size / 254 * 100) * sensitivity }}"
+                  pct_step_limited: >
+                    {% set v = pct_step_raw %}
+                    {% if v > 40 %}40{% elif v < 1 %}1{% else %}{{ v | round(0) }}{% endif %}
+                  pct_step: "{{ pct_step_limited | int }}"
+              - service: light.turn_on
+                target: !input target_lights
+                data:
+                  brightness_step_pct: "{{ -(pct_step) }}"
+                  transition: "{{ rot_trans }}"
+
           - choose:
               - conditions:
                   - condition: template
@@ -261,8 +287,7 @@ action:
                       level: info
                       message: >
                         [Rotary -] step_size={{ step_size }} sensitivity={{ sensitivity }}
-                        applied_delta={{ (step_size * sensitivity) | float }} clamped={{ clamped_delta if lights_count>0 else 'n/a' }}
-                        count={{ lights_count }}
+                        lights_count={{ lights_count }}
 
       ######################################################################
       # Toggle (одинарный / двойной клик)
@@ -283,7 +308,7 @@ action:
             continue_on_timeout: true
 
           - choose:
-              # ДВОЙНОЕ нажатие
+              # Двойной клик
               - conditions:
                   - condition: template
                     value_template: "{{ wait.trigger is not none }}"
@@ -303,7 +328,7 @@ action:
                               level: info
                               message: >
                                 [Double Click] brightness_pct={{ double_bright }} delay={{ dbl_delay }}ms
-            # ОДИНАРНОЕ нажатие
+            # Одинарный клик
             default:
               - service: light.turn_on
                 target: !input target_lights
