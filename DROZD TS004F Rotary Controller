@@ -171,7 +171,7 @@ action:
             value_template: "{{ command == 'off' and cluster_id == 6 }}"
         sequence:
           - service: light.turn_off
-            target: ! input target_light
+            target: !input target_light
             data:
               transition: >
                 {{ 0. 5 if smooth else 0 }}
