@@ -1,5 +1,5 @@
 blueprint:
-  name: DROZD Light auto v1
+  name: "Освещение по движению/присутствию с днём/ночью, сценами, солнцем/расписанием, смещением, ручным авто-выключением и гибкими деактивациями"
   description: >
     Включает свет или выключатели при обнаружении движения/присутствия и выключает их
     через заданный таймаут, зависящий от режима день/ночь. Ночной режим может определяться
@@ -263,6 +263,7 @@ mode: restart
 max_exceeded: silent
 
 trigger:
+  # Движение/присутствие: включение и выключение по таймауту
   - id: motion_on
     platform: state
     entity_id: !input motion_sensors
@@ -275,6 +276,7 @@ trigger:
     for:
       seconds: "{{ motion_timeout_seconds | int }}"
 
+  # Смена режима по солнцу
   - id: sun_rises
     platform: state
     entity_id: sun.sun
@@ -285,6 +287,7 @@ trigger:
     entity_id: sun.sun
     to: 'below_horizon'
 
+  # Смена режима по расписанию
   - id: schedule_night_start_trigger
     platform: time
     at: !input schedule_night_start
@@ -293,17 +296,17 @@ trigger:
     platform: time
     at: !input schedule_night_end
 
-  - id: manual_on
-    platform: state
-    entity_id: >
-      {{ expand(target_entities.entity_id) | map(attribute='entity_id') | list }}
-    to: 'on'
+  # Ручное включение света: используем event, чтобы избежать шаблонов в entity_id
+  - id: manual_on_event
+    platform: event
+    event_type: state_changed
 
 condition: []
 
 action:
   - choose:
 
+      # Авто-включение по движению (если разрешено для текущего режима)
       - conditions:
           - condition: trigger
             id: motion_on
@@ -313,6 +316,7 @@ action:
           - service: homeassistant.turn_on
             target: !input target_entities
 
+      # Авто-выключение по таймауту (если разрешено для текущего режима)
       - conditions:
           - condition: trigger
             id: motion_off_timeout
@@ -322,6 +326,7 @@ action:
           - service: homeassistant.turn_off
             target: !input target_entities
 
+      # Применить ночную сцену при входе в ночной режим
       - conditions:
           - condition: template
             value_template: >
@@ -336,6 +341,7 @@ action:
             target:
               entity_id: "{{ night_scene }}"
 
+      # Применить дневную сцену при входе в дневной режим
       - conditions:
           - condition: template
             value_template: >
@@ -353,14 +359,18 @@ action:
             target:
               entity_id: "{{ day_scene }}"
 
+      # Ручное включение: ловим событие state_changed и фильтруем нужные сущности
       - conditions:
           - condition: trigger
-            id: manual_on
-          - condition: template
-            value_template: "{{ manual_on_auto_off_enabled }}"
+            id: manual_on_event
           - condition: template
             value_template: >
-              {{ (trigger.to_state.context and trigger.to_state.context.user_id) is not none }}
+              {% set entities = expand(target_entities.entity_id) | map(attribute='entity_id') | list %}
+              {% set eid = trigger.event.data.entity_id %}
+              {% set new = trigger.event.data.new_state %}
+              {{ eid in entities and new is not none and new.state == 'on' and (new.context and new.context.user_id) }}
+          - condition: template
+            value_template: "{{ manual_on_auto_off_enabled }}"
         sequence:
           - delay:
               seconds: "{{ manual_timeout_seconds | int }}"
