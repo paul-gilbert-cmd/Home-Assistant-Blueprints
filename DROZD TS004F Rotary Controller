@@ -25,9 +25,8 @@ blueprint:
       name: Управляемое устройство освещения
       description: Выберите светильник или группу светильников для управления
       selector:
-        target:
-          entity:
-            - domain: light
+        entity:
+          domain: light
     
     sensitivity:
       name: Чувствительность поворота
@@ -43,7 +42,7 @@ blueprint:
     single_press_brightness:
       name: Яркость при одинарном нажатии
       description: Яркость в процентах при одинарном нажатии кнопки
-      default: 50
+      default: 1
       selector:
         number:
           min: 1
@@ -100,7 +99,8 @@ action:
             value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 0 }}"
         sequence:
           - service: light.turn_on
-            target: !input target_light
+            target:
+              entity_id: !input target_light
             data:
               brightness_step_pct: >
                 {{ (step_size * sensitivity_var) | int }}
@@ -113,7 +113,8 @@ action:
             value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 1 }}"
         sequence:
           - service: light. turn_on
-            target: ! input target_light
+            target:
+              entity_id: !input target_light
             data:
               brightness_step_pct: >
                 {{ -(step_size * sensitivity_var) | int }}
@@ -130,16 +131,11 @@ action:
               - conditions:
                   - condition: template
                     value_template: >
-                      {% set lights = namespace(off=true) %}
-                      {% if target_light.entity_id is defined %}
-                        {% set lights. off = is_state(target_light.entity_id, 'off') %}
-                      {% else %}
-                        {% set lights. off = false %}
-                      {% endif %}
-                      {{ lights. off }}
+                      {{ is_state(target_light, 'off') }}
                 sequence:
                   - service: light.turn_on
-                    target: !input target_light
+                    target:
+                      entity_id: !input target_light
                     data:
                       brightness_pct: ! input single_press_brightness
                       transition: >
@@ -147,7 +143,8 @@ action:
             default:
               # Если свет включен, устанавливаем заданную яркость
               - service: light.turn_on
-                target: !input target_light
+                target:
+                  entity_id: !input target_light
                 data:
                   brightness_pct: !input single_press_brightness
                   transition: >
@@ -159,7 +156,8 @@ action:
             value_template: "{{ command == 'on' and cluster_id == 6 }}"
         sequence:
           - service: light.turn_on
-            target: !input target_light
+            target:
+              entity_id: !input target_light
             data:
               brightness_pct: !input double_press_brightness
               transition: >
@@ -171,7 +169,8 @@ action:
             value_template: "{{ command == 'off' and cluster_id == 6 }}"
         sequence:
           - service: light.turn_off
-            target: !input target_light
+            target:
+              entity_id: !input target_light
             data:
               transition: >
                 {{ 0.5 if smooth else 0 }}
