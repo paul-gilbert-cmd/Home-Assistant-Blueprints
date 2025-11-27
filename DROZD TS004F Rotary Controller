@@ -1,22 +1,26 @@
 blueprint:
-  name: ZHA - TS004F Rotary Controller (final)
+  name: ZHA - TS004F Rotary Controller (multi-target, min 1%)
   description: |
-    Управление яркостью света по событиям ZHA от ротари-контроллера TS004F (или совместимого):
-    - step (cluster 0x0008, step_mode 0/1) увеличивает/уменьшает яркость
-    - toggle (cluster 0x0006) -> одинарное / двойное нажатие (двойное определяется по второму toggle в заданный интервал)
+    Управление яркостью света по событиям ZHA от ротари-контроллера:
+    - Поворот по часовой стрелке/против (cluster 0x0008, command: step, step_mode 0/1): относительное изменение яркости с чувствительностью.
+    - Одинарное нажатие (cluster 0x0006, command: toggle): установка точной яркости (с минимумом 1%).
+    - Двойное нажатие: определяется как два toggle подряд с задержкой (установка другой точной яркости).
+    Поддержка выбора нескольких целевых светильников (entity, группы, устройства, зоны).
+
   domain: automation
 
   input:
     controller:
       name: Контроллер ZHA
-      description: Выберите ZHA устройство (ротари контроллер)
+      description: Выберите устройство ZHA (ротари контроллер)
       selector:
         device:
           integration: zha
           multiple: false
 
-    target_light:
-      name: Целевой свет (один или группа)
+    target_lights:
+      name: Целевые светильники (несколько допускается)
+      description: Выберите один или несколько источников света, группу, устройство или зону
       selector:
         target:
           entity:
@@ -25,16 +29,17 @@ blueprint:
     sensitivity:
       name: Чувствительность поворота
       description: Множитель изменения яркости (шаг * множитель)
-      default: 2.0
+      default: 1.0
       selector:
         number:
-          min: 0.5
-          max: 5.0
-          step: 0.5
+          min: 0.1
+          max: 2.0
+          step: 0.1
           mode: slider
 
     single_press_brightness:
       name: Яркость одинарного нажатия (%)
+      description: Точное значение яркости при одиночном клике (минимум 1%)
       default: 50
       selector:
         number:
@@ -46,6 +51,7 @@ blueprint:
 
     double_press_brightness:
       name: Яркость двойного нажатия (%)
+      description: Точное значение яркости при двойном клике (минимум 1%)
       default: 100
       selector:
         number:
@@ -58,17 +64,18 @@ blueprint:
     double_press_delay:
       name: Интервал двойного клика (мс)
       description: Максимальная пауза между двумя toggle
-      default: 500
+      default: 600
       selector:
         number:
           min: 200
-          max: 1000
+          max: 1200
           step: 50
           unit_of_measurement: "ms"
           mode: slider
 
     smooth_transition:
       name: Плавные переходы
+      description: Включить плавные переходы яркости
       default: true
       selector:
         boolean:
@@ -78,10 +85,15 @@ max_exceeded: silent
 
 variables:
   sensitivity: !input sensitivity
-  single_bright: !input single_press_brightness
-  double_bright: !input double_press_brightness
+  single_bright_raw: !input single_press_brightness
+  double_bright_raw: !input double_press_brightness
   dbl_delay: !input double_press_delay
   smooth: !input smooth_transition
+  target_all: !input target_lights
+
+  # Минимум 1% для точных установок
+  single_bright: "{{ [single_bright_raw | int, 1] | max }}"
+  double_bright: "{{ [double_bright_raw | int, 1] | max }}"
   trans_step: "{{ 0.3 if smooth else 0 }}"
   trans_press: "{{ 0.5 if smooth else 0 }}"
 
@@ -104,8 +116,11 @@ action:
           - condition: template
             value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 0 }}"
         sequence:
+          # Предварительно включаем свет, чтобы исключить выключение при отрицательных шагах
           - service: light.turn_on
-            target: !input target_light
+            target: !input target_lights
+          - service: light.turn_on
+            target: !input target_lights
             data:
               brightness_step_pct: "{{ (step_size * sensitivity) | int }}"
               transition: "{{ trans_step }}"
@@ -116,7 +131,9 @@ action:
             value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 1 }}"
         sequence:
           - service: light.turn_on
-            target: !input target_light
+            target: !input target_lights
+          - service: light.turn_on
+            target: !input target_lights
             data:
               brightness_step_pct: "{{ -(step_size * sensitivity) | int }}"
               transition: "{{ trans_step }}"
@@ -138,19 +155,21 @@ action:
             continue_on_timeout: true
 
           - choose:
-              # Двойной клик
+              # Двойной клик — пришло второе событие toggle в интервале
               - conditions:
                   - condition: template
                     value_template: "{{ wait.trigger is not none }}"
                 sequence:
                   - service: light.turn_on
-                    target: !input target_light
+                    target: !input target_lights
                     data:
                       brightness_pct: "{{ double_bright }}"
                       transition: "{{ trans_press }}"
+
+            # Одинарный клик — второго события не было
             default:
               - service: light.turn_on
-                target: !input target_light
+                target: !input target_lights
                 data:
                   brightness_pct: "{{ single_bright }}"
                   transition: "{{ trans_press }}"
