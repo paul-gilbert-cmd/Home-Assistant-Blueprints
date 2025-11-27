@@ -1,5 +1,5 @@
 blueprint:
-  name: DROZD ZHA - TS004F Rotary Controller
+  name: ZHA - TS004F Rotary Controller
   description: |
     Управление яркостью света с помощью поворотного контроллера TS004F через ZHA. 
     
@@ -149,7 +149,7 @@ action:
               - service: light.turn_on
                 target: !input target_light
                 data:
-                  brightness_pct: ! input single_press_brightness
+                  brightness_pct: !input single_press_brightness
                   transition: >
                     {{ 0.5 if smooth else 0 }}
       
@@ -170,7 +170,7 @@ action:
           - condition: template
             value_template: "{{ command == 'off' and cluster_id == 6 }}"
         sequence:
-          - service: light. turn_off
+          - service: light.turn_off
             target: ! input target_light
             data:
               transition: >
