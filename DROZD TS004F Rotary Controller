@@ -1,18 +1,19 @@
 blueprint:
-  name: ZHA - TS004F Rotary Controller (fix target extraction, queued)
+  name: ZHA - TS004F Rotary Controller (parallel, fixed)
   description: |
-    Управление яркостью по ZHA событиям ротари контроллера:
-    - Вращение (cluster 0x0008, command: step): увеличение/уменьшение яркости, с ограничением минимальной яркости ~1% (уровень 3/255).
-    - Одинарный клик (cluster 0x0006, toggle): установка фиксированной яркости.
-    - Двойной клик: два toggle подряд в заданный интервал.
-    Исправления: корректное извлечение light сущностей из target (одна/список/группа/зона/устройство), стабильная проверка wait.trigger.
-
+    Управление яркостью по событиям ZHA от ротари-контроллера TS004F (или совместимого).
+    Возможности:
+      - Вращение (cluster 0x0008, command step, step_mode 0/1): увеличение / уменьшение яркости.
+      - Одинарное нажатие (cluster 0x0006, toggle): установка фиксированной яркости.
+      - Двойное нажатие: два toggle подряд в течение заданного интервала.
+    Минимальная яркость ограничена ~1% (уровень >= 3 из 255) при расчётных изменениях.
   domain: automation
 
   input:
     controller:
       name: Контроллер ZHA
-      description: Выберите устройство (ротари контроллер)
+      description: |
+        Выберите устройство (ротари контроллер).
       selector:
         device:
           integration: zha
@@ -20,7 +21,9 @@ blueprint:
 
     target_lights:
       name: Целевые светильники
-      description: Можно выбрать одну или несколько сущностей / группы / устройства / зоны
+      description: |
+        Выберите один или несколько источников света / группу / устройство / зону.
+        Внутренне будут использованы только light.* сущности.
       selector:
         target:
           entity:
@@ -28,7 +31,9 @@ blueprint:
 
     sensitivity:
       name: Чувствительность поворота
-      description: Множитель для тонкой настройки шага (уровни 0–255): delta = step_size * sensitivity, обрезается max_delta_level
+      description: |
+        Множитель для шага. Формула расчётного прироста в уровнях: raw_delta = step_size * sensitivity.
+        Затем raw_delta ограничивается max_delta_level, чтобы избежать резких скачков.
       default: 1.0
       selector:
         number:
@@ -38,8 +43,9 @@ blueprint:
           mode: slider
 
     max_delta_level:
-      name: Максимальный прирост/убыль за шаг (уровни 0–255)
-      description: Ограничивает скачки при быстром вращении
+      name: Максимальный прирост/убыль (уровни 0–255)
+      description: |
+        Верхняя граница изменения яркости за один шаг после умножения на sensitivity.
       default: 40
       selector:
         number:
@@ -50,6 +56,8 @@ blueprint:
 
     single_press_brightness:
       name: Яркость одинарного нажатия (%)
+      description: |
+        Точное значение яркости при одиночном клике (не ниже 1%).
       default: 50
       selector:
         number:
@@ -61,6 +69,8 @@ blueprint:
 
     double_press_brightness:
       name: Яркость двойного нажатия (%)
+      description: |
+        Точное значение при двойном клике (не ниже 1%).
       default: 100
       selector:
         number:
@@ -72,7 +82,8 @@ blueprint:
 
     dbl_click_delay:
       name: Интервал двойного клика (мс)
-      description: Максимальная пауза между двумя toggle
+      description: |
+        Максимальная пауза между двумя toggle для распознавания двойного нажатия.
       default: 700
       selector:
         number:
@@ -84,6 +95,8 @@ blueprint:
 
     rotation_transition:
       name: Переход при вращении (сек)
+      description: |
+        Время плавного изменения при каждом шаге. 0 = мгновенно (наиболее отзывчиво).
       default: 0
       selector:
         number:
@@ -95,6 +108,8 @@ blueprint:
 
     press_transition:
       name: Переход при нажатии (сек)
+      description: |
+        Время плавного изменения яркости при одинарном/двойном нажатии.
       default: 0.3
       selector:
         number:
@@ -105,12 +120,14 @@ blueprint:
           mode: slider
 
     enable_debug:
-      name: Включить debug лог в system_log
+      name: Включить debug лог
+      description: |
+        При включении пишутся сообщения в system_log.write.
       default: false
       selector:
         boolean:
 
-mode: queued
+mode: parallel
 max_exceeded: silent
 
 variables:
@@ -124,26 +141,8 @@ variables:
   rot_trans: !input rotation_transition
   press_trans: !input press_transition
   debug: !input enable_debug
-
-  # Сырой target
   tgt: !input target_lights
-
-  # Извлекаем массив light.* из target: поддержка строки/массива entity_id, а также групп/устройств
-  light_entities: >
-    {% set res = [] %}
-    {% if tgt.entity_id is defined %}
-      {% set entities = tgt.entity_id if tgt.entity_id is iterable and (tgt.entity_id is not string) else [tgt.entity_id] %}
-      {% for e in entities %}
-        {% if e is string and e.startswith('light.') %}
-          {% set res = res + [e] %}
-        {% endif %}
-      {% endfor %}
-    {% endif %}
-    # NOTE: Если выбраны группа/устройство/зона без явных entity_id, Home Assistant развернёт их в целевых вызовах.
-    {{ res }}
-
-  lights_count: "{{ light_entities | length }}"
-  min_level: 3   # ~1% на шкале 0-255
+  min_level: 3  # ~1% (255 * 0.01 ≈ 2.55)
 
 trigger:
   - platform: event
@@ -157,11 +156,23 @@ action:
       cluster_id: "{{ trigger.event.data.cluster_id | int }}"
       step_mode: "{{ trigger.event.data.params.step_mode | default(-1) | int }}"
       step_size: "{{ trigger.event.data.params.step_size | default(0) | int }}"
+      # Извлекаем список light.* сущностей из target
+      light_entities: >
+        {% set res = [] %}
+        {% if tgt.entity_id is defined %}
+          {% set raw = tgt.entity_id %}
+          {% set entities = raw if (raw is iterable and (raw is not string)) else [raw] %}
+          {% for e in entities %}
+            {% if e is string and e.startswith('light.') %}
+              {% set res = res + [e] %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+        {{ res }}
+      lights_count: "{{ light_entities | length }}"
 
   - choose:
-      ######################################################################
-      # Вращение по часовой стрелке (увеличение)
-      ######################################################################
+      # Вращение + (step_mode 0)
       - conditions:
           - condition: template
             value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 0 }}"
@@ -189,9 +200,9 @@ action:
                             raw_delta: "{{ (step_size * sensitivity) | float }}"
                             clamped_delta: >
                               {% if raw_delta > max_delta %}{{ max_delta }}{% else %}{{ raw_delta }}{% endif %}
-                            new_level_raw: "{{ current_level | float + clamped_delta }}"
-                            new_level_hi: "{{ [new_level_raw, 255] | min }}"
-                            new_level: "{{ [new_level_hi, min_level] | max | round(0) }}"
+                            new_raw: "{{ current_level | float + clamped_delta }}"
+                            new_hi: "{{ [new_raw, 255] | min }}"
+                            new_level: "{{ [new_hi, min_level] | max | round(0) }}"
                         - service: light.turn_on
                           target:
                             entity_id: "{{ entity_id }}"
@@ -199,14 +210,12 @@ action:
                             brightness: "{{ new_level }}"
                             transition: "{{ rot_trans }}"
             default:
-              # Если light_entities пуст (например выбран target через группу/зону/устройство),
-              # отдаем относительный шаг на весь target как fallback
+              # fallback для случая, когда не удалось извлечь отдельные entity_id (группа/зона)
               - variables:
                   pct_step_raw: "{{ (step_size / 254 * 100) * sensitivity }}"
-                  pct_step_limited: >
+                  pct_step: >
                     {% set v = pct_step_raw %}
                     {% if v > 40 %}40{% elif v < 1 %}1{% else %}{{ v | round(0) }}{% endif %}
-                  pct_step: "{{ pct_step_limited | int }}"
               - service: light.turn_on
                 target: !input target_lights
                 data:
@@ -222,12 +231,9 @@ action:
                     data:
                       level: info
                       message: >
-                        [Rotary +] step_size={{ step_size }} sensitivity={{ sensitivity }}
-                        lights_count={{ lights_count }}
+                        [Rotary +] step_size={{ step_size }} sensitivity={{ sensitivity }} count={{ lights_count }}
 
-      ######################################################################
-      # Вращение против часовой стрелки (уменьшение)
-      ######################################################################
+      # Вращение - (step_mode 1)
       - conditions:
           - condition: template
             value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 1 }}"
@@ -255,8 +261,8 @@ action:
                             raw_delta: "{{ (step_size * sensitivity) | float }}"
                             clamped_delta: >
                               {% if raw_delta > max_delta %}{{ max_delta }}{% else %}{{ raw_delta }}{% endif %}
-                            new_level_raw: "{{ current_level | float - clamped_delta }}"
-                            above_min: "{{ new_level_raw if new_level_raw > min_level else min_level }}"
+                            new_raw: "{{ current_level | float - clamped_delta }}"
+                            above_min: "{{ new_raw if new_raw > min_level else min_level }}"
                             new_level: "{{ [above_min, 255] | min | round(0) }}"
                         - service: light.turn_on
                           target:
@@ -267,10 +273,9 @@ action:
             default:
               - variables:
                   pct_step_raw: "{{ (step_size / 254 * 100) * sensitivity }}"
-                  pct_step_limited: >
+                  pct_step: >
                     {% set v = pct_step_raw %}
                     {% if v > 40 %}40{% elif v < 1 %}1{% else %}{{ v | round(0) }}{% endif %}
-                  pct_step: "{{ pct_step_limited | int }}"
               - service: light.turn_on
                 target: !input target_lights
                 data:
@@ -286,12 +291,9 @@ action:
                     data:
                       level: info
                       message: >
-                        [Rotary -] step_size={{ step_size }} sensitivity={{ sensitivity }}
-                        lights_count={{ lights_count }}
+                        [Rotary -] step_size={{ step_size }} sensitivity={{ sensitivity }} count={{ lights_count }}
 
-      ######################################################################
-      # Toggle (одинарный / двойной клик)
-      ######################################################################
+      # Toggle (одинарный / двойной)
       - conditions:
           - condition: template
             value_template: "{{ command == 'toggle' and cluster_id == 6 }}"
@@ -327,7 +329,7 @@ action:
                             data:
                               level: info
                               message: >
-                                [Double Click] brightness_pct={{ double_bright }} delay={{ dbl_delay }}ms
+                                [Double Click] brightness_pct={{ double_bright }}
             # Одинарный клик
             default:
               - service: light.turn_on
