@@ -1,13 +1,18 @@
 blueprint:
-  name: DROZD light auto v1
+  name: DROZD Light auto v1
   description: >
     Включает свет или выключатели при обнаружении движения/присутствия и выключает их
     через заданный таймаут, зависящий от режима день/ночь. Ночной режим может определяться
-    по положению солнца, по положению солнца с пользовательским смещением по времени
-    (например, за 1 час до заката и до 1 часа после восхода), либо по настраиваемому расписанию.
-    При переходе между режимами автоматически применяются выбранные сцены для дня и ночи.
+    по положению солнца, по положению солнца со смещением по времени (например, за 1 час
+    до заката и до 1 часа после восхода) либо по настраиваемому расписанию. При переходе
+    между режимами автоматически применяются выбранные сцены для дня и ночи. Можно полностью
+    деактивировать ночной режим. Также доступны опции:
+    - деактивировать автоматическое включение в дневное время
+    - деактивировать автоматическое выключение в дневное время
+    - деактивировать автоматическое включение в ночное время
+    - деактивировать автоматическое выключение в ночное время
     Дополнительно можно автоматически выключать свет, включённый вручную (пользователем),
-    по отдельному таймауту. Ночной режим можно деактивировать полностью.
+    по отдельному таймауту.
 
   domain: automation
 
@@ -98,14 +103,14 @@ blueprint:
     schedule_night_start:
       name: "Время начала ночного режима (расписание)"
       description: "Используется, если выбран способ «Пользовательское расписание»; игнорируется при способах «Солнце» и «Солнце со смещением»."
-      default: "23:45:00"
+      default: "22:00:00"
       selector:
         time: {}
 
     schedule_night_end:
       name: "Время окончания ночного режима (расписание)"
       description: "Используется, если выбран способ «Пользовательское расписание»; игнорируется при способах «Солнце» и «Солнце со смещением»."
-      default: "07:00:00"
+      default: "06:30:00"
       selector:
         time: {}
 
@@ -161,6 +166,34 @@ blueprint:
           unit_of_measurement: seconds
           mode: box
 
+    enable_day_auto_on:
+      name: "Авто-включение днём"
+      description: "Разрешить автоматическое включение света по движению в дневное время."
+      default: true
+      selector:
+        boolean: {}
+
+    enable_day_auto_off:
+      name: "Авто-выключение днём"
+      description: "Разрешить автоматическое выключение света по таймауту в дневное время."
+      default: true
+      selector:
+        boolean: {}
+
+    enable_night_auto_on:
+      name: "Авто-включение ночью"
+      description: "Разрешить автоматическое включение света по движению в ночное время."
+      default: true
+      selector:
+        boolean: {}
+
+    enable_night_auto_off:
+      name: "Авто-выключение ночью"
+      description: "Разрешить автоматическое выключение света по таймауту в ночное время."
+      default: true
+      selector:
+        boolean: {}
+
 variables:
   motion_sensors: !input motion_sensors
   target_entities: !input target_entities
@@ -186,14 +219,16 @@ variables:
   apply_scene_on_mode_change: !input apply_scene_on_mode_change
   manual_on_auto_off_enabled: !input manual_on_auto_off_enabled
 
+  enable_day_auto_on: !input enable_day_auto_on
+  enable_day_auto_off: !input enable_day_auto_off
+  enable_night_auto_on: !input enable_night_auto_on
+  enable_night_auto_off: !input enable_night_auto_off
+
   # Базовое определение ночи по солнцу (без смещения)
   is_night_sun: >
     {{ states('sun.sun') == 'below_horizon' }}
 
   # Ночь по солнцу со смещением:
-  # - Днём: ночь начинается в (время следующего заката + смещение)
-  # - Ночью: ночь заканчивается в (время следующего восхода + смещение)
-  # Если атрибуты недоступны, используем базовое определение по горизонту.
   is_night_sun_offset: >
     {% set now_ts = as_timestamp(now()) %}
     {% set next_set = state_attr('sun.sun','next_setting') %}
@@ -241,17 +276,31 @@ variables:
   manual_timeout_seconds: >
     {{ manual_on_night_timeout_seconds if is_night else manual_on_day_timeout_seconds }}
 
+  # Флаги разрешения авто-включения/выключения в зависимости от текущего режима
+  allow_auto_on: >
+    {% if is_night %}
+      {{ enable_night_auto_on }}
+    {% else %}
+      {{ enable_day_auto_on }}
+    {% endif %}
+  allow_auto_off: >
+    {% if is_night %}
+      {{ enable_night_auto_off }}
+    {% else %}
+      {{ enable_day_auto_off }}
+    {% endif %}
+
 mode: restart
 max_exceeded: silent
 
 trigger:
-  # Движение/присутствие ВКЛ -> включить целевые сущности
+  # Движение/присутствие ВКЛ -> включить целевые сущности (если разрешено)
   - id: motion_on
     platform: state
     entity_id: !input motion_sensors
     to: 'on'
 
-  # Движение/присутствие ВЫКЛ и выдержан таймаут -> выключить целевые сущности
+  # Движение/присутствие ВЫКЛ и выдержан таймаут -> выключить целевые сущности (если разрешено)
   - id: motion_off_timeout
     platform: state
     entity_id: !input motion_sensors
@@ -290,18 +339,22 @@ condition: []
 
 action:
   - choose:
-      # Движение ВКЛ -> включить цели
+      # Движение ВКЛ -> включить цели, если разрешено авто-включение для текущего режима
       - conditions:
           - condition: trigger
             id: motion_on
+          - condition: template
+            value_template: "{{ allow_auto_on }}"
         sequence:
           - service: homeassistant.turn_on
             target: !input target_entities
 
-      # Движение ВЫКЛ и таймаут истёк -> выключить цели
+      # Движение ВЫКЛ и таймаут истёк -> выключить цели, если разрешено авто-выключение для текущего режима
       - conditions:
           - condition: trigger
             id: motion_off_timeout
+          - condition: template
+            value_template: "{{ allow_auto_off }}"
         sequence:
           - service: homeassistant.turn_off
             target: !input target_entities
