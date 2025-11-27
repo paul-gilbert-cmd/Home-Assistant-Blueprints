@@ -86,7 +86,7 @@ mode: restart
 max_exceeded: silent
 
 variables:
-  sensitivity_var: ! input sensitivity
+  sensitivity_var: !input sensitivity
   single_brightness: !input single_press_brightness
   double_brightness: !input double_press_brightness
   smooth: !input smooth_transition
@@ -160,8 +160,6 @@ action:
                     data:
                       brightness_pct: "{{ double_brightness }}"
                       transition: "{{ 0. 5 if smooth else 0 }}"
-            
-            # Одинарное нажатие (timeout истек, второго нажатия не было)
             default:
               - service: light. turn_on
                 target:
