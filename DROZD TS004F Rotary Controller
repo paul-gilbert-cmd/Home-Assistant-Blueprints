@@ -1,272 +1,177 @@
 blueprint:
-  name: DROZD TS004F Rotary Controller (stable single-press)
-  description: 'Линейная регулировка яркости с настраиваемой чувствительностью, множественные цели (lights).
-    Простая и надёжная обработка одиночного нажатия (без распознавания двойного нажатия).
-    Импортируйте этот blueprint, создайте автоматику из него и протестируйте кнопку.'
+  name: DROZD ZHA - TS004F Rotary Controller
+  description: |
+    Управление яркостью света с помощью поворотного контроллера TS004F через ZHA. 
+    
+    Функции:
+    - Поворот по часовой стрелке: увеличение яркости
+    - Поворот против часовой стрелки: уменьшение яркости
+    - Одинарное нажатие: установка заданной яркости
+    - Двойное нажатие: установка другой заданной яркости
+    - Настраиваемая чувствительность поворота
+    
   domain: automation
+  
   input:
-    zha_device:
-      name: ZHA device
-      description: "Выберите устройство ZHA (сравнение по device_id). Если не указано — автоматизация реагирует на все устройства."
+    controller:
+      name: Контроллер TS004F
+      description: Выберите устройство TS004F Rotary Controller (или любое ZHA устройство)
       selector:
         device:
           integration: zha
-
-    target_lights:
-      name: Целевые устройства (можно выбрать несколько)
+          multiple: false
+    
+    target_light:
+      name: Управляемое устройство освещения
+      description: Выберите светильник или группу светильников для управления
       selector:
-        entity:
-          domain:
-          - light
-          multiple: true
-
-    transition_speed:
-      name: Скорость переходов (сек)
-      default: 0.5
-      selector:
-        number:
-          min: 0.0
-          max: 10.0
-          step: 0.1
-
-    brightness_multiplier:
-      name: Множитель дельты яркости
-      description: "Умножает влияние step_size. Увеличьте для более резкого отклика."
-      default: 1.0
+        target:
+          entity:
+            - domain: light
+    
+    sensitivity:
+      name: Чувствительность поворота
+      description: Множитель для изменения яркости при повороте (чем выше, тем больше изменение)
+      default: 2. 0
       selector:
         number:
-          min: 0.1
-          max: 10.0
-          step: 0.1
-
-    sensitivity_divisor:
-      name: Чувствительность (делитель)
-      description: "Делит (step_size * multiplier). Чем больше — тем мягче изменение."
-      default: 4.0
-      selector:
-        number:
-          min: 0.1
-          max: 20.0
-          step: 0.1
-
-    min_brightness:
-      name: Минимальная яркость (0 = разрешать выключение)
-      default: 1
-      selector:
-        number:
-          min: 0
-          max: 254
-          step: 1
-
-    # single-press action
-    button_action:
-      name: Одиночное нажатие
-      description: "Действие при событии toggle (одиночное нажатие)."
-      default: no_action
-      selector:
-        select:
-          options:
-            - brightness_1
-            - brightness_100
-            - brightness_custom
-            - no_action
-
-    # brightness value for single press (percent)
+          min: 0. 5
+          max: 5. 0
+          step: 0. 5
+          mode: slider
+    
     single_press_brightness:
-      name: Яркость при одиночном нажатии (%)
-      description: "Используется, если выбрано brightness_custom. Значение 0 = выключить."
+      name: Яркость при одинарном нажатии
+      description: Яркость в процентах при одинарном нажатии кнопки
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    
+    double_press_brightness:
+      name: Яркость при двойном нажатии
+      description: Яркость в процентах при двойном нажатии кнопки
       default: 100
       selector:
         number:
-          min: 0
+          min: 1
           max: 100
           step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    
+    smooth_transition:
+      name: Плавный переход
+      description: Включить плавное изменение яркости
+      default: true
+      selector:
+        boolean:
+
+mode: restart
+max_exceeded: silent
 
 variables:
-  zha_device_input: !input zha_device
-  target_list: !input target_lights
-  transition_speed: !input transition_speed
-  brightness_multiplier: !input brightness_multiplier
-  sensitivity_divisor: !input sensitivity_divisor
-  min_brightness: !input min_brightness
-  button_action: !input button_action
-  single_press_brightness_pct: !input single_press_brightness
-
-  # safe parsing of event fields
-  cluster_id: "{{ trigger.event.data.cluster_id | int }}"
-  command: "{{ trigger.event.data.command }}"
-  device_id_from_event: "{{ trigger.event.data.device_id | default('') }}"
-
-  # step_mode safe
-  step_mode: >
-    {% set _sm = 0 %}
-    {% if trigger.event.data.params is defined and trigger.event.data.params.step_mode is not none %}
-      {% set _sm = trigger.event.data.params.step_mode %}
-    {% elif trigger.event.data.args is defined and (trigger.event.data.args | length) > 0 %}
-      {% set _sm = trigger.event.data.args[0] %}
-    {% endif %}
-    {{ _sm | int }}
-
-  # step_size safe
-  step_size: >
-    {% set _ss = 0 %}
-    {% if trigger.event.data.params is defined and trigger.event.data.params.step_size is not none %}
-      {% set _ss = trigger.event.data.params.step_size %}
-    {% elif trigger.event.data.args is defined and (trigger.event.data.args | length) > 1 %}
-      {% set _ss = trigger.event.data.args[1] %}
-    {% endif %}
-    {{ _ss | int }}
-
-  # current brightness from first target (if any)
-  first_target: >
-    {% if target_list is iterable and (target_list | length) > 0 %}
-      {{ target_list[0] }}
-    {% else %}
-      {{ '' }}
-    {% endif %}
-
-  current_brightness: >
-    {% set ft = (target_list[0] if (target_list is iterable and (target_list | length) > 0) else '') %}
-    {{ (state_attr(ft, 'brightness') | default(0)) | int }}
-
-  # delta calculation
-  delta: >
-    {% set raw = (step_size | int) * (brightness_multiplier | float) / (sensitivity_divisor | float) %}
-    {% if (raw | int) < 1 %}
-      1
-    {% else %}
-      {{ raw | int }}
-    {% endif %}
+  sensitivity_var: ! input sensitivity
+  single_brightness: !input single_press_brightness
+  double_brightness: !input double_press_brightness
+  smooth: !input smooth_transition
 
 trigger:
   - platform: event
     event_type: zha_event
-
-condition:
-  - condition: template
-    value_template: >
-      {% if zha_device_input | default('') != '' %}
-        {{ (trigger.event.data.device_id | default('')) == zha_device_input }}
-      {% else %}
-        true
-      {% endif %}
-  - condition: template
-    value_template: "{{ cluster_id in [6, 8] }}"
+    event_data:
+      device_id: !input controller
 
 action:
+  - variables:
+      command: "{{ trigger.event.data.command }}"
+      cluster_id: "{{ trigger. event.data.cluster_id }}"
+      step_mode: "{{ trigger.event.data.params.step_mode | default(none) }}"
+      step_size: "{{ trigger.event.data.params.step_size | default(0) }}"
+      
   - choose:
-      # immediate handling of toggle (single press only)
+      # Поворот по часовой стрелке (увеличение яркости)
       - conditions:
           - condition: template
-            value_template: "{{ trigger.event.data.command == 'toggle' }}"
+            value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 0 }}"
         sequence:
-          - variables:
-              _b_pct: "{{ single_press_brightness_pct | float }}"
-              _b_val: >
-                {% set p = _b_pct %}
-                {{ ((p / 100.0) * 255) | int }}
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ button_action == 'brightness_1' }}"
-                sequence:
-                  - service: light.turn_on
-                    target:
-                      entity_id: !input target_lights
-                    data:
-                      brightness: 1
-                      transition: "{{ transition_speed }}"
-              - conditions:
-                  - condition: template
-                    value_template: "{{ button_action == 'brightness_100' }}"
-                sequence:
-                  - service: light.turn_on
-                    target:
-                      entity_id: !input target_lights
-                    data:
-                      brightness: 255
-                      transition: "{{ transition_speed }}"
-              - conditions:
-                  - condition: template
-                    value_template: "{{ button_action == 'brightness_custom' and _b_val == 0 }}"
-                sequence:
-                  - service: light.turn_off
-                    target:
-                      entity_id: !input target_lights
-                    data:
-                      transition: "{{ transition_speed }}"
-              - conditions:
-                  - condition: template
-                    value_template: "{{ button_action == 'brightness_custom' and _b_val > 0 }}"
-                sequence:
-                  - service: light.turn_on
-                    target:
-                      entity_id: !input target_lights
-                    data:
-                      brightness: "{{ _b_val }}"
-                      transition: "{{ transition_speed }}"
-              - conditions:
-                  - condition: template
-                    value_template: "{{ button_action == 'no_action' }}"
-                sequence:
-                  - variables:
-                      _debug: "no action"
-
-      # rotation -> linear brightness change
+          - service: light.turn_on
+            target: !input target_light
+            data:
+              brightness_step_pct: >
+                {{ (step_size * sensitivity_var) | int }}
+              transition: >
+                {{ 0.3 if smooth else 0 }}
+      
+      # Поворот против часовой стрелки (уменьшение яркости)
       - conditions:
           - condition: template
-            value_template: "{{ trigger.event.data.command == 'step' and trigger.event.data.cluster_id | int == 8 }}"
+            value_template: "{{ command == 'step' and cluster_id == 8 and step_mode == 1 }}"
         sequence:
-          - variables:
-              raw_new: >
-                {% set cb = current_brightness | int %}
-                {% set d = delta | int %}
-                {% if step_mode | int == 1 %}
-                  {{ cb - d }}
-                {% else %}
-                  {{ cb + d }}
-                {% endif %}
-              intended: >
-                {% set nb = raw_new | int %}
-                {% if nb < 0 %}
-                  0
-                {% elif nb > 255 %}
-                  255
-                {% else %}
-                  {{ nb }}
-                {% endif %}
-              final_brightness: >
-                {% set ib = (min_brightness | int) %}
-                {% if intended == 0 %}
-                  {% if ib == 0 %}
-                    0
-                  {% else %}
-                    {{ ib }}
-                  {% endif %}
-                {% else %}
-                  {% if ib > 0 and intended < ib %}
-                    {{ ib }}
-                  {% else %}
-                    {{ intended }}
-                  {% endif %}
-                {% endif %}
+          - service: light. turn_on
+            target: ! input target_light
+            data:
+              brightness_step_pct: >
+                {{ -(step_size * sensitivity_var) | int }}
+              transition: >
+                {{ 0.3 if smooth else 0 }}
+      
+      # Одинарное нажатие (toggle или включение с заданной яркостью)
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'toggle' and cluster_id == 6 }}"
+        sequence:
           - choose:
+              # Если свет выключен, включаем с заданной яркостью
               - conditions:
                   - condition: template
-                    value_template: "{{ final_brightness == 0 }}"
-                sequence:
-                  - service: light.turn_off
-                    target:
-                      entity_id: !input target_lights
-                    data:
-                      transition: "{{ transition_speed }}"
-              - conditions:
-                  - condition: template
-                    value_template: "{{ final_brightness > 0 }}"
+                    value_template: >
+                      {% set lights = namespace(off=true) %}
+                      {% if target_light.entity_id is defined %}
+                        {% set lights. off = is_state(target_light.entity_id, 'off') %}
+                      {% else %}
+                        {% set lights. off = false %}
+                      {% endif %}
+                      {{ lights. off }}
                 sequence:
                   - service: light.turn_on
-                    target:
-                      entity_id: !input target_lights
+                    target: !input target_light
                     data:
-                      brightness: "{{ final_brightness }}"
-                      transition: "{{ transition_speed }}"
+                      brightness_pct: ! input single_press_brightness
+                      transition: >
+                        {{ 0.5 if smooth else 0 }}
+            default:
+              # Если свет включен, устанавливаем заданную яркость
+              - service: light.turn_on
+                target: !input target_light
+                data:
+                  brightness_pct: ! input single_press_brightness
+                  transition: >
+                    {{ 0.5 if smooth else 0 }}
+      
+      # Двойное нажатие (on command)
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'on' and cluster_id == 6 }}"
+        sequence:
+          - service: light.turn_on
+            target: !input target_light
+            data:
+              brightness_pct: !input double_press_brightness
+              transition: >
+                {{ 0.5 if smooth else 0 }}
+      
+      # Команда выключения (если есть)
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'off' and cluster_id == 6 }}"
+        sequence:
+          - service: light. turn_off
+            target: ! input target_light
+            data:
+              transition: >
+                {{ 0. 5 if smooth else 0 }}
