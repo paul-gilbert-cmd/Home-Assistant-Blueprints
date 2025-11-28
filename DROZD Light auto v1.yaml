@@ -1,6 +1,6 @@
 blueprint:
   name: "DROZD Light auto v1"
-  
+
   domain: automation
 
   input:
@@ -14,7 +14,7 @@ blueprint:
 
     target_entities:
       name: "Целевые свет/выключатели"
-      description: "Выберите управляемые entities (light и/или switch)."
+      description: "Выберите управляемые сущности (light и/или switch)."
       selector:
         target:
           entity:
@@ -22,11 +22,9 @@ blueprint:
               - light
               - switch
 
-    # ВНИМАНИЕ: этот список используется ТОЛЬКО для отслеживания ручного включения.
-    # Здесь НЕЛЬЗЯ указывать target; нужно указать конкретные сущности (entity_id).
     manual_entities:
       name: "Сущности для отслеживания ручного включения"
-      description: "Выберите конкретные light/switch для функции авто-выключения при ручном включении. Это безопасный список, без шаблонов."
+      description: "Конкретные light/switch, для которых нужно авто-выключение при ручном включении."
       selector:
         entity:
           domain:
@@ -109,7 +107,7 @@ blueprint:
     schedule_night_end:
       name: "Конец ночи (расписание)"
       description: "Используется только при источнике 'Расписание'."
-      default: "07:00:00"
+      default: "07:0:00"
       selector:
         time: {}
 
@@ -146,7 +144,7 @@ blueprint:
     manual_on_day_timeout_seconds:
       name: "Ручное включение: таймаут днём (сек)"
       description: "Через сколько секунд выключить вручную включённый свет днём."
-      default: 1200
+      default: 600
       selector:
         number:
           min: 1
@@ -157,7 +155,7 @@ blueprint:
     manual_on_night_timeout_seconds:
       name: "Ручное включение: таймаут ночью (сек)"
       description: "Через сколько секунд выключить вручную включённый свет ночью."
-      default: 600
+      default: 300
       selector:
         number:
           min: 1
@@ -270,18 +268,11 @@ mode: restart
 max_exceeded: silent
 
 trigger:
-  # Движение/присутствие: включение и выключение по таймауту
+  # Включить свет при движении
   - id: motion_on
     platform: state
     entity_id: !input motion_sensors
     to: 'on'
-
-  - id: motion_off_timeout
-    platform: state
-    entity_id: !input motion_sensors
-    to: 'off'
-    for:
-      seconds: "{{ motion_timeout_seconds | int }}"
 
   # Смена режима по солнцу
   - id: sun_rises
@@ -303,7 +294,7 @@ trigger:
     platform: time
     at: !input schedule_night_end
 
-  # Ручное включение света: БЕЗ шаблонов — конкретный список manual_entities
+  # Ручное включение света: конкретный список manual_entities
   - id: manual_on
     platform: state
     entity_id: !input manual_entities
@@ -314,7 +305,7 @@ condition: []
 action:
   - choose:
 
-      # Авто-включение по движению (если разрешено для текущего режима)
+      # 1) Авто-включение по движению (если разрешено)
       - conditions:
           - condition: trigger
             id: motion_on
@@ -323,18 +314,24 @@ action:
         sequence:
           - service: homeassistant.turn_on
             target: !input target_entities
-
-      # Авто-выключение по таймауту (если разрешено для текущего режима)
-      - conditions:
-          - condition: trigger
-            id: motion_off_timeout
+          # Ожидание прекращения движения и таймаута, затем выключение (если разрешено авто-выключение)
+          - wait_for_trigger:
+              - platform: state
+                entity_id: !input motion_sensors
+                to: 'off'
+            continue_on_timeout: false
+          - delay:
+              seconds: "{{ motion_timeout_seconds | int }}"
           - condition: template
             value_template: "{{ allow_auto_off }}"
-        sequence:
+          # Перед выключением проверим, что нет активного движения
+          - condition: template
+            value_template: >
+              {{ expand(motion_sensors) | selectattr('state','eq','on') | list | count == 0 }}
           - service: homeassistant.turn_off
             target: !input target_entities
 
-      # Применить ночную сцену при входе в ночной режим
+      # 2) Применить ночную сцену при входе в ночной режим
       - conditions:
           - condition: template
             value_template: >
@@ -349,7 +346,7 @@ action:
             target:
               entity_id: "{{ night_scene }}"
 
-      # Применить дневную сцену при входе в дневной режим
+      # 3) Применить дневную сцену при входе в дневной режим
       - conditions:
           - condition: template
             value_template: >
@@ -367,20 +364,19 @@ action:
             target:
               entity_id: "{{ day_scene }}"
 
-      # Ручное включение -> если включено и событие инициировано пользователем, запланировать авто-выключение
+      # 4) Ручное включение -> если включено, запланировать авто-выключение
       - conditions:
           - condition: trigger
             id: manual_on
           - condition: template
             value_template: "{{ manual_on_auto_off_enabled }}"
-          # Считаем «ручным», если изменение состояния произошло от пользователя (не автоматизация)
           - condition: template
             value_template: >
               {{ (trigger.to_state.context and trigger.to_state.context.user_id) is not none }}
         sequence:
           - delay:
               seconds: "{{ manual_timeout_seconds | int }}"
-          # Перед выключением убедиться, что ни один датчик сейчас не показывает движение/присутствие
+          # Не выключаем, если есть активное движение
           - condition: template
             value_template: >
               {{ expand(motion_sensors) | selectattr('state','eq','on') | list | count == 0 }}
