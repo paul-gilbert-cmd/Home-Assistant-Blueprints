@@ -1,0 +1,381 @@
+blueprint:
+  name: "DROZD light (2 датчика) - Освещение по движению — переключение сцен и ночного режима по сенсорам солнца"
+  description: >
+    Включает свет по движению и выключает по таймауту (раздельно для дня/ночи).
+    Сцены применяются ОДИН РАЗ при первом включении после смены режима.
+    Переключение между днями и ночью происходит по значениям сенсоров времени солнца
+    (например, sensor.sun_next_setting — закат, sensor.sun_next_rising — восход, sensor.sun_next_dusk — сумерки и др.).
+
+  domain: automation
+
+  input:
+    motion_sensors:
+      name: "Датчики движения/присутствия"
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
+
+    single_off_sensor:
+      name: "Датчик, по которому проверяется отсутствие движения для выключения"
+      description: "Свет будет выключаться по таймауту только если этот датчик в состоянии off"
+      selector:
+        entity:
+          domain: binary_sensor
+
+    target_entities:
+      name: "Целевые свет/выключатели"
+      selector:
+        target:
+          entity:
+            domain:
+              - light
+              - switch
+
+    manual_entities:
+      name: "Сущности для отслеживания ручного включения"
+      selector:
+        entity:
+          domain:
+            - light
+            - switch
+          multiple: true
+
+    night_scene_pending_flag:
+      name: "Флаг ожидания ночной сцены (input_boolean)"
+      selector:
+        entity:
+          domain: input_boolean
+
+    day_scene_pending_flag:
+      name: "Флаг ожидания дневной сцены (input_boolean)"
+      selector:
+        entity:
+          domain: input_boolean
+
+    scene_apply_delay:
+      name: "Время ожидания перед применением сцены (сек)"
+      description: "Сколько ждать между включением света и применением сцены."
+      default: 3
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: seconds
+          mode: box
+
+    day_scene:
+      name: "Дневная сцена (только при ПЕРВОМ включении)"
+      selector:
+        entity:
+          domain: scene
+
+    night_scene:
+      name: "Ночная сцена (только при ПЕРВОМ включении)"
+      selector:
+        entity:
+          domain: scene
+
+    apply_scene_on_mode_change:
+      name: "Применять сцену сразу при переходе режима"
+      default: false
+      selector:
+        boolean: {}
+
+    day_timeout_seconds:
+      name: "Таймаут выключения днём (сек)"
+      default: 180
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+    night_timeout_seconds:
+      name: "Таймаут выключения ночью (сек)"
+      default: 600
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+    # Сенсоры времени смены день/ночь
+    sun_night_start_sensor:
+      name: "Сенсор начала ночи (например, sensor.sun_next_setting, sensor.sun_next_dusk)"
+      selector:
+        entity:
+          domain: sensor
+
+    sun_night_end_sensor:
+      name: "Сенсор начала дня (например, sensor.sun_next_rising, sensor.sun_next_dawn)"
+      selector:
+        entity:
+          domain: sensor
+
+    enable_day_auto_on:
+      name: "Авто-включение днём"
+      default: true
+      selector:
+        boolean: {}
+
+    enable_day_auto_off:
+      name: "Авто-выключение днём"
+      default: true
+      selector:
+        boolean: {}
+
+    enable_night_auto_on:
+      name: "Авто-включение ночью"
+      default: true
+      selector:
+        boolean: {}
+
+    enable_night_auto_off:
+      name: "Авто-выключение ночью"
+      default: true
+      selector:
+        boolean: {}
+
+    manual_on_auto_off_enabled:
+      name: "Авто-выключение ручного включения"
+      default: true
+      selector:
+        boolean: {}
+
+    manual_on_day_timeout_seconds:
+      name: "Таймаут ручного включения днём (сек)"
+      default: 900
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+    manual_on_night_timeout_seconds:
+      name: "Таймаут ручного включения ночью (сек)"
+      default: 1800
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+variables:
+  motion_sensors: !input motion_sensors
+  single_off_sensor: !input single_off_sensor
+  target_entities: !input target_entities
+  manual_entities: !input manual_entities
+  night_flag: !input night_scene_pending_flag
+  day_flag: !input day_scene_pending_flag
+  scene_apply_delay: !input scene_apply_delay
+
+  day_scene: !input day_scene
+  night_scene: !input night_scene
+  apply_scene_on_mode_change: !input apply_scene_on_mode_change
+
+  day_timeout_seconds: !input day_timeout_seconds
+  night_timeout_seconds: !input night_timeout_seconds
+  manual_on_day_timeout_seconds: !input manual_on_day_timeout_seconds
+  manual_on_night_timeout_seconds: !input manual_on_night_timeout_seconds
+
+  sun_night_start_sensor: !input sun_night_start_sensor
+  sun_night_end_sensor: !input sun_night_end_sensor
+
+  enable_day_auto_on: !input enable_day_auto_on
+  enable_day_auto_off: !input enable_day_auto_off
+  enable_night_auto_on: !input enable_night_auto_on
+  enable_night_auto_off: !input enable_night_auto_off
+  manual_on_auto_off_enabled: !input manual_on_auto_off_enabled
+
+  # Логика режимов через helpers (флаги)
+  is_night: "{{ states(night_flag) == 'on' }}"
+  is_day: "{{ states(day_flag) == 'on' }}"
+  motion_timeout_seconds: "{{ night_timeout_seconds if is_night else day_timeout_seconds }}"
+  manual_timeout_seconds: "{{ manual_on_night_timeout_seconds if is_night else manual_on_day_timeout_seconds }}"
+  allow_auto_on: "{{ enable_night_auto_on if is_night else enable_day_auto_on }}"
+  allow_auto_off: "{{ enable_night_auto_off if is_night else enable_day_auto_off }}"
+
+  # проверяем ТОЛЬКО один выбранный датчик на отсутствие движения
+  single_off_sensor_is_off: "{{ is_state(single_off_sensor, 'off') }}"
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - id: motion_on
+    platform: state
+    entity_id: !input motion_sensors
+    to: 'on'
+
+  - id: motion_off
+    platform: state
+    entity_id: !input motion_sensors
+    to: 'off'
+
+  # Переключение в ночной режим по сенсору (например, sensor.sun_next_setting, sensor.sun_next_dusk)
+  - id: night_start_by_sensor
+    platform: time
+    at: "{{ states(sun_night_start_sensor) }}"
+
+  # Переключение в дневной режим по сенсору (например, sensor.sun_next_rising, sensor.sun_next_dawn)
+  - id: night_end_by_sensor
+    platform: time
+    at: "{{ states(sun_night_end_sensor) }}"
+
+  - id: manual_on
+    platform: state
+    entity_id: !input manual_entities
+    to: 'on'
+
+condition: []
+
+action:
+  - choose:
+
+      # 0) Смена режима — установка флагов и первый запуск сцены (при переходе в ночь)
+      - conditions:
+          - condition: trigger
+            id: night_start_by_sensor
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ night_flag }}"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ day_flag }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ apply_scene_on_mode_change and night_scene is not none }}"
+                sequence:
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ night_scene }}"
+
+      # 0.2) Смена режима — переход в день
+      - conditions:
+          - condition: trigger
+            id: night_end_by_sensor
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ day_flag }}"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ night_flag }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ apply_scene_on_mode_change and day_scene is not none }}"
+                sequence:
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ day_scene }}"
+
+      # 1) Авто-включение по движению (ЛЮБОЙ датчик)
+      - conditions:
+          - condition: trigger
+            id: motion_on
+          - condition: template
+            value_template: "{{ allow_auto_on }}"
+        sequence:
+          - service: homeassistant.turn_on
+            target: !input target_entities
+          # Применение сцены с задержкой, если флаг pending — только при первом включении после смены режима
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_night and night_scene is not none and states(night_flag) == 'on' }}"
+                sequence:
+                  - delay:
+                      seconds: "{{ scene_apply_delay | int }}"
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ night_scene }}"
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: "{{ night_flag }}"
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_day and day_scene is not none and states(day_flag) == 'on' }}"
+                sequence:
+                  - delay:
+                      seconds: "{{ scene_apply_delay | int }}"
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ day_scene }}"
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: "{{ day_flag }}"
+            default: []
+
+      # 2) Авто-выключение по таймауту — ТОЛЬКО по одному датчику
+      - conditions:
+          - condition: trigger
+            id: motion_off
+          - condition: template
+            value_template: "{{ allow_auto_off }}"
+          - condition: template
+            value_template: "{{ single_off_sensor_is_off }}"
+        sequence:
+          - delay:
+              seconds: "{{ motion_timeout_seconds | int }}"
+          - condition: template
+            value_template: "{{ single_off_sensor_is_off }}"
+          - service: homeassistant.turn_off
+            target: !input target_entities
+
+      # 3) Ручное включение (если указаны manual_entities)
+      - conditions:
+          - condition: trigger
+            id: manual_on
+          - condition: template
+            value_template: "{{ manual_on_auto_off_enabled }}"
+          - condition: template
+            value_template: >
+              {{ manual_entities | count > 0 }}
+          - condition: template
+            value_template: >
+              {{ (trigger.to_state.context and trigger.to_state.context.user_id) is not none }}
+        sequence:
+          # Применение сцены при первом включении после перехода в режим — с задержкой
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_night and night_scene is not none and states(night_flag) == 'on' }}"
+                sequence:
+                  - delay:
+                      seconds: "{{ scene_apply_delay | int }}"
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ night_scene }}"
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: "{{ night_flag }}"
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_day and day_scene is not none and states(day_flag) == 'on' }}"
+                sequence:
+                  - delay:
+                      seconds: "{{ scene_apply_delay | int }}"
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ day_scene }}"
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: "{{ day_flag }}"
+            default: []
+          # Таймаут авто-выключения вручную включённого света — тоже только по одному датчику
+          - delay:
+              seconds: "{{ manual_timeout_seconds | int }}"
+          - condition: template
+            value_template: "{{ single_off_sensor_is_off }}"
+          - service: homeassistant.turn_off
+            target: !input target_entities
+
+    default: []
