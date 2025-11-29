@@ -435,7 +435,7 @@ action:
           - service: homeassistant.turn_off
             target: !input target_entities
 
-      # 3) Ручное включение
+            # 3) Ручное включение
       - conditions:
           - condition: trigger
             id: manual_on
@@ -474,12 +474,22 @@ action:
                     target:
                       entity_id: "{{ day_flag }}"
             default: []
-          # Таймаут авто-выключения вручную включённого света
+
+          # 3.1) Ждём окончания движения/присутствия по основному датчику выключения
+          - wait_for_trigger:
+              - platform: state
+                entity_id: !input single_off_sensor
+                to: "off"
+            timeout:
+              minutes: 1440   # верхняя защита, чтобы не зависнуть навсегда
+            continue_on_timeout: false
+
+          # 3.2) Отсчёт таймаута от момента, когда движение прекратилось
           - delay:
               seconds: "{{ manual_timeout_seconds | int }}"
+
+          # 3.3) Если к концу таймаута датчик всё ещё не видит движения — выключаем свет
           - condition: template
             value_template: "{{ single_off_sensor_is_off }}"
           - service: homeassistant.turn_off
             target: !input target_entities
-
-    default: []
