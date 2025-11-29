@@ -1,10 +1,12 @@
 blueprint:
-  name: "DROZD light (2 датчика) - Освещение по движению — переключение сцен и ночного режима по сенсорам солнца"
+  name: "DROZD Light 2 sensors v1.0 - Освещение по движению — переключение сцен и ночного режима по сенсорам солнца и времени"
   description: >
     Включает свет по движению и выключает по таймауту (раздельно для дня/ночи).
     Сцены применяются ОДИН РАЗ при первом включении после смены режима.
-    Переключение между днями и ночью происходит по значениям сенсоров времени солнца
-    (например, sensor.sun_next_setting — закат, sensor.sun_next_rising — восход, sensor.sun_next_dusk — сумерки и др.).
+    Переключение между днём и ночью может происходить:
+    - по значениям сенсоров времени солнца (sensor.sun_next_setting / sensor.sun_next_rising и др.),
+    - и/или по фиксированному времени начала и окончания ночи,
+    - в зависимости от выбранного источника.
 
   domain: automation
 
@@ -102,7 +104,7 @@ blueprint:
           unit_of_measurement: seconds
           mode: box
 
-    # Сенсоры времени смены день/ночь
+    # Сенсоры времени смены день/ночь (опционально)
     sun_night_start_sensor:
       name: "Сенсор начала ночи (например, sensor.sun_next_setting, sensor.sun_next_dusk)"
       selector:
@@ -114,6 +116,36 @@ blueprint:
       selector:
         entity:
           domain: sensor
+
+    # Явное время начала и окончания ночи
+    night_start_time:
+      name: "Время начала ночи (часы:минуты)"
+      description: "Если выбран источник 'Фиксированное время' или 'Оба', ночной режим включится в это время."
+      default: "22:00:00"
+      selector:
+        time: {}
+
+    night_end_time:
+      name: "Время окончания ночи (часы:минуты)"
+      description: "Если выбран источник 'Фиксированное время' или 'Оба', ночной режим выключится в это время (начало дня)."
+      default: "07:00:00"
+      selector:
+        time: {}
+
+    night_mode_source:
+      name: "Источник смены день/ночь"
+      description: "Чем управлять переключением ночного режима"
+      default: "sun_sensors"
+      selector:
+        select:
+          options:
+            - label: "Сенсоры солнца"
+              value: "sun_sensors"
+            - label: "Фиксированное время"
+              value: "fixed_time"
+            - label: "И сенсоры, и время"
+              value: "both"
+          mode: dropdown
 
     enable_day_auto_on:
       name: "Авто-включение днём"
@@ -186,6 +218,8 @@ variables:
   sun_night_start_sensor: !input sun_night_start_sensor
   sun_night_end_sensor: !input sun_night_end_sensor
 
+  night_mode_source: !input night_mode_source
+
   enable_day_auto_on: !input enable_day_auto_on
   enable_day_auto_off: !input enable_day_auto_off
   enable_night_auto_on: !input enable_night_auto_on
@@ -202,6 +236,10 @@ variables:
 
   # проверяем ТОЛЬКО один выбранный датчик на отсутствие движения
   single_off_sensor_is_off: "{{ is_state(single_off_sensor, 'off') }}"
+
+  # Удобные флаги для источников
+  use_sun_sensors: "{{ night_mode_source in ['sun_sensors', 'both'] }}"
+  use_fixed_time: "{{ night_mode_source in ['fixed_time', 'both'] }}"
 
 mode: restart
 max_exceeded: silent
@@ -227,6 +265,16 @@ trigger:
     platform: time
     at: "{{ states(sun_night_end_sensor) }}"
 
+  # Переключение в ночной режим по фиксированному времени
+  - id: night_start_by_time
+    platform: time
+    at: !input night_start_time
+
+  # Переключение в дневной режим по фиксированному времени
+  - id: night_end_by_time
+    platform: time
+    at: !input night_end_time
+
   - id: manual_on
     platform: state
     entity_id: !input manual_entities
@@ -237,10 +285,12 @@ condition: []
 action:
   - choose:
 
-      # 0) Смена режима — установка флагов и первый запуск сцены (при переходе в ночь)
+      # 0) Смена режима — переход в ночь по СЕНСОРУ (если включено использование сенсоров)
       - conditions:
           - condition: trigger
             id: night_start_by_sensor
+          - condition: template
+            value_template: "{{ use_sun_sensors }}"
         sequence:
           - service: input_boolean.turn_on
             target:
@@ -257,10 +307,56 @@ action:
                     target:
                       entity_id: "{{ night_scene }}"
 
-      # 0.2) Смена режима — переход в день
+      # 0.1) Смена режима — переход в ночь по ВРЕМЕНИ (если включено использование времени)
+      - conditions:
+          - condition: trigger
+            id: night_start_by_time
+          - condition: template
+            value_template: "{{ use_fixed_time }}"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ night_flag }}"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ day_flag }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ apply_scene_on_mode_change and night_scene is not none }}"
+                sequence:
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ night_scene }}"
+
+      # 0.2) Смена режима — переход в день по СЕНСОРУ (если включено использование сенсоров)
       - conditions:
           - condition: trigger
             id: night_end_by_sensor
+          - condition: template
+            value_template: "{{ use_sun_sensors }}"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ day_flag }}"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ night_flag }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ apply_scene_on_mode_change and day_scene is not none }}"
+                sequence:
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ day_scene }}"
+
+      # 0.3) Смена режима — переход в день по ВРЕМЕНИ (если включено использование времени)
+      - conditions:
+          - condition: trigger
+            id: night_end_by_time
+          - condition: template
+            value_template: "{{ use_fixed_time }}"
         sequence:
           - service: input_boolean.turn_on
             target:
