@@ -1,113 +1,105 @@
 blueprint:
-  name: "DROZD Tuya TS0042 (2 button, ZHA) — универсальный""
+  name: "DROZD - Tuya TS0042 (2 button, ZHA) universal"
   description: >
-    Универсальный Blueprint для Tuya TS0042 (2-кнопочный переключатель, ZHA).
-    Поддерживает одиночное, двойное, длинное нажатие для левой (endpoint 1) и правой (endpoint 2) кнопок.
-    Все действия настраиваются: можно запускать сервисы, переключать сцены по кругу и т.д.
+    Universal Blueprint for Tuya TS0042 (2-button switch, ZHA).
+    Supports single, double and long press for left (endpoint 1) and right (endpoint 2) buttons.
+    All actions are configurable: you can call any services, switch scenes in a cycle, etc.
   domain: automation
   input:
     switch_ieee:
-      name: Пульт (TS0042, ZHA)
-      description: Выберите устройство TS0042, подключённое через ZHA
+      name: "Switch (TS0042, ZHA)"
+      description: "Select TS0042 device paired via ZHA"
       selector:
         device:
           integration: zha
 
-    # ---------------- БАЗОВЫЕ ДЕЙСТВИЯ ----------------
-    # Здесь вы можете повесить ЛЮБЫЕ действия — сервисы, сцены, скрипты и т.п.
+    # ---------------- BASIC ACTIONS ----------------
 
     left_single_action:
-      name: Левая кнопка — одиночное нажатие
-      description: Любые действия при одиночном нажатии левой кнопки
+      name: "Left button - single press"
+      description: "Any actions for left button single press"
       default: []
       selector:
         action: {}
 
     left_double_action:
-      name: Левая кнопка — двойное нажатие
-      description: Любые действия при двойном нажатии левой кнопки
+      name: "Left button - double press"
+      description: "Any actions for left button double press"
       default: []
       selector:
         action: {}
 
     left_long_action:
-      name: Левая кнопка — долгое нажатие
-      description: Любые действия при длинном нажатии левой кнопки
+      name: "Left button - long press"
+      description: "Any actions for left button long press"
       default: []
       selector:
         action: {}
 
     right_single_action:
-      name: Правая кнопка — одиночное нажатие
-      description: Любые действия при одиночном нажатии правой кнопки
+      name: "Right button - single press"
+      description: "Any actions for right button single press"
       default: []
       selector:
         action: {}
 
     right_double_action:
-      name: Правая кнопка — двойное нажатие
-      description: Любые действия при двойном нажатии правой кнопки
+      name: "Right button - double press"
+      description: "Any actions for right button double press"
       default: []
       selector:
         action: {}
 
     right_long_action:
-      name: Правая кнопка — долгое нажатие
-      description: Любые действия при длинном нажатии правой кнопки
+      name: "Right button - long press"
+      description: "Any actions for right button long press"
       default: []
       selector:
         action: {}
 
-    # ---------------- УНИВЕРСАЛЬНЫЙ ЦИКЛ СЦЕН ----------------
-    # Блок ниже — полностью универсальный. НИ ОДНО имя сцены или комнаты не зашито.
-    # Вы просто укажете:
-    #   - список сцен (для конкретного помещения),
-    #   - input_number, который будет хранить индекс текущей сцены,
-    #   - к какой кнопке/типу нажатия это применять.
+    # ---------------- UNIVERSAL SCENE CYCLE ----------------
 
     cycle_enabled:
-      name: Включить функциональность "перебор сцен по кругу"
+      name: "Enable scene cycle"
       description: >
-        Включает универсальный механизм переключения сцен по кругу.
-        Если выключено, настройки ниже игнорируются.
+        Enables universal scene cycle mechanism.
+        If disabled, the settings below are ignored.
       default: false
       selector:
         boolean: {}
 
     cycle_trigger_button:
-      name: Кнопка для перебора сцен
+      name: "Button to trigger scene cycle"
       description: >
-        Выберите, какой кнопкой будет запускаться цикл сцен.
-        Левая = endpoint 1, правая = endpoint 2.
+        Which button will trigger scene cycle.
+        Left = endpoint 1, right = endpoint 2.
       default: left
       selector:
         select:
           options:
-            - label: Левая кнопка (endpoint 1)
+            - label: "Left button (endpoint 1)"
               value: left
-            - label: Правая кнопка (endpoint 2)
+            - label: "Right button (endpoint 2)"
               value: right
 
     cycle_trigger_press_type:
-      name: Тип нажатия для перебора сцен
-      description: >
-        Какой жест использовать для переключения сцен (одиночное/двойное/долгое нажатие).
+      name: "Press type for scene cycle"
+      description: "Which gesture to use for scene cycle (single/double/long press)."
       default: double
       selector:
         select:
           options:
-            - label: Одиночное нажатие
+            - label: "Single press"
               value: single
-            - label: Двойное нажатие
+            - label: "Double press"
               value: double
-            - label: Долгое нажатие
+            - label: "Long press"
               value: long
 
     cycle_scenes:
-      name: Список сцен для переключения по кругу
+      name: "Scenes list for cycle"
       description: >
-        Укажите список сцен в порядке переключения.
-        Можно задать любой набор (для любой комнаты).
+        Select scenes in the order you want to cycle through.
       default: []
       selector:
         target:
@@ -116,9 +108,9 @@ blueprint:
             multiple: true
 
     cycle_index_helper:
-      name: input_number для хранения индекса сцены
+      name: "input_number to store scene index"
       description: >
-        Выберите input_number (min=0, max=N-1), который будет хранить текущий индекс сцены.
+        Select input_number (min=0, max=N-1) that stores current scene index.
       default:
       selector:
         entity:
@@ -166,9 +158,9 @@ action:
 
   - choose:
 
-      # ---------- БАЗОВЫЕ ДЕЙСТВИЯ ДЛЯ КНОПОК ----------
+      # ---------- BASIC BUTTON ACTIONS ----------
 
-      # Левая кнопка
+      # Left button
       - conditions:
           - condition: template
             value_template: "{{ button == 'left' and press_type == 'single' }}"
@@ -184,7 +176,7 @@ action:
             value_template: "{{ button == 'left' and press_type == 'long' }}"
         sequence: !input left_long_action
 
-      # Правая кнопка
+      # Right button
       - conditions:
           - condition: template
             value_template: "{{ button == 'right' and press_type == 'single' }}"
@@ -200,7 +192,7 @@ action:
             value_template: "{{ button == 'right' and press_type == 'long' }}"
         sequence: !input right_long_action
 
-      # ---------- УНИВЕРСАЛЬНЫЙ ЦИКЛ СЦЕН ----------
+      # ---------- UNIVERSAL SCENE CYCLE ----------
 
       - conditions:
           - condition: template
