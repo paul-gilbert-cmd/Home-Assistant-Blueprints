@@ -1,10 +1,10 @@
 blueprint:
-  name: "DROZD Light 2 sensors v1.0 - Освещение по движению — переключение сцен и ночного режима по сенсорам солнца и времени"
+  name: "DROZD light 2 sensors v1.0 - Освещение по движению — переключение сцен и ночного режима по сенсорам солнца и времени"
   description: >
     Включает свет по движению и выключает по таймауту (раздельно для дня/ночи).
     Сцены применяются ОДИН РАЗ при первом включении после смены режима.
     Переключение между днём и ночью может происходить:
-    - по значениям сенсоров времени солнца (sensor.sun_next_setting / sensor.sun_next_rising и др.),
+    - по значениям сенсоров времени солнца (sensor.sun_next_setting / sensor.sun_next_rising и др.) — опционально,
     - и/или по фиксированному времени начала и окончания ночи,
     - в зависимости от выбранного источника.
 
@@ -104,18 +104,23 @@ blueprint:
           unit_of_measurement: seconds
           mode: box
 
-    # Сенсоры времени смены день/ночь (опционально)
+    # Сенсоры времени смены день/ночь (ОПЦИОНАЛЬНО)
     sun_night_start_sensor:
-      name: "Сенсор начала ночи (например, sensor.sun_next_setting, sensor.sun_next_dusk)"
+      name: "Сенсор начала ночи (опционально, например, sensor.sun_next_setting, sensor.sun_next_dusk)"
+      default: ""
       selector:
         entity:
           domain: sensor
+          multiple: false
+          # Можно будет оставить пустым в UI
 
     sun_night_end_sensor:
-      name: "Сенсор начала дня (например, sensor.sun_next_rising, sensor.sun_next_dawn)"
+      name: "Сенсор начала дня (опционально, например, sensor.sun_next_rising, sensor.sun_next_dawn)"
+      default: ""
       selector:
         entity:
           domain: sensor
+          multiple: false
 
     # Явное время начала и окончания ночи
     night_start_time:
@@ -241,6 +246,10 @@ variables:
   use_sun_sensors: "{{ night_mode_source in ['sun_sensors', 'both'] }}"
   use_fixed_time: "{{ night_mode_source in ['fixed_time', 'both'] }}"
 
+  # флаги, заданы ли сенсоры (пустая строка -> считаем не заданным)
+  has_sun_start_sensor: "{{ (sun_night_start_sensor | string) not in ['', 'none', 'unknown'] }}"
+  has_sun_end_sensor: "{{ (sun_night_end_sensor | string) not in ['', 'none', 'unknown'] }}"
+
 mode: restart
 max_exceeded: silent
 
@@ -255,12 +264,12 @@ trigger:
     entity_id: !input motion_sensors
     to: 'off'
 
-  # Переключение в ночной режим по сенсору (например, sensor.sun_next_setting, sensor.sun_next_dusk)
+  # Переключение в ночной режим по сенсору (если он вообще задан)
   - id: night_start_by_sensor
     platform: time
     at: "{{ states(sun_night_start_sensor) }}"
 
-  # Переключение в дневной режим по сенсору (например, sensor.sun_next_rising, sensor.sun_next_dawn)
+  # Переключение в дневной режим по сенсору (если он вообще задан)
   - id: night_end_by_sensor
     platform: time
     at: "{{ states(sun_night_end_sensor) }}"
@@ -285,12 +294,12 @@ condition: []
 action:
   - choose:
 
-      # 0) Смена режима — переход в ночь по СЕНСОРУ (если включено использование сенсоров)
+      # 0) Переход в ночь по СЕНСОРУ (источник разрешён И сенсор задан)
       - conditions:
           - condition: trigger
             id: night_start_by_sensor
           - condition: template
-            value_template: "{{ use_sun_sensors }}"
+            value_template: "{{ use_sun_sensors and has_sun_start_sensor }}"
         sequence:
           - service: input_boolean.turn_on
             target:
@@ -307,7 +316,7 @@ action:
                     target:
                       entity_id: "{{ night_scene }}"
 
-      # 0.1) Смена режима — переход в ночь по ВРЕМЕНИ (если включено использование времени)
+      # 0.1) Переход в ночь по ВРЕМЕНИ (источник разрешён)
       - conditions:
           - condition: trigger
             id: night_start_by_time
@@ -329,12 +338,12 @@ action:
                     target:
                       entity_id: "{{ night_scene }}"
 
-      # 0.2) Смена режима — переход в день по СЕНСОРУ (если включено использование сенсоров)
+      # 0.2) Переход в день по СЕНСОРУ (источник разрешён И сенсор задан)
       - conditions:
           - condition: trigger
             id: night_end_by_sensor
           - condition: template
-            value_template: "{{ use_sun_sensors }}"
+            value_template: "{{ use_sun_sensors and has_sun_end_sensor }}"
         sequence:
           - service: input_boolean.turn_on
             target:
@@ -351,7 +360,7 @@ action:
                     target:
                       entity_id: "{{ day_scene }}"
 
-      # 0.3) Смена режима — переход в день по ВРЕМЕНИ (если включено использование времени)
+      # 0.3) Переход в день по ВРЕМЕНИ (источник разрешён)
       - conditions:
           - condition: trigger
             id: night_end_by_time
@@ -382,7 +391,6 @@ action:
         sequence:
           - service: homeassistant.turn_on
             target: !input target_entities
-          # Применение сцены с задержкой, если флаг pending — только при первом включении после смены режима
           - choose:
               - conditions:
                   - condition: template
@@ -426,20 +434,18 @@ action:
           - service: homeassistant.turn_off
             target: !input target_entities
 
-      # 3) Ручное включение (если указаны manual_entities)
+      # 3) Ручное включение
       - conditions:
           - condition: trigger
             id: manual_on
           - condition: template
             value_template: "{{ manual_on_auto_off_enabled }}"
           - condition: template
-            value_template: >
-              {{ manual_entities | count > 0 }}
+            value_template: "{{ manual_entities | count > 0 }}"
           - condition: template
             value_template: >
               {{ (trigger.to_state.context and trigger.to_state.context.user_id) is not none }}
         sequence:
-          # Применение сцены при первом включении после перехода в режим — с задержкой
           - choose:
               - conditions:
                   - condition: template
@@ -466,7 +472,6 @@ action:
                     target:
                       entity_id: "{{ day_flag }}"
             default: []
-          # Таймаут авто-выключения вручную включённого света — тоже только по одному датчику
           - delay:
               seconds: "{{ manual_timeout_seconds | int }}"
           - condition: template
