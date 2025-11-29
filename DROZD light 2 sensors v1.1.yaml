@@ -1,5 +1,5 @@
 blueprint:
-  name: "DROZD light 2 sensors v1.1"
+  name: "DROZD light 2 sensors v1.2"
   description: >
     Освещение по движению — переключение сцен и ночного режима по сенсорам солнца и времени
     Включает свет по движению и выключает по таймауту (раздельно для дня/ночи).
@@ -45,13 +45,13 @@ blueprint:
           multiple: true
 
     night_scene_pending_flag:
-      name: "Флаг ожидания ночной сцены (input_boolean)"
+      name: "Флаг ожидания ночной сцены"
       selector:
         entity:
           domain: input_boolean
 
     day_scene_pending_flag:
-      name: "Флаг ожидания дневной сцены (input_boolean)"
+      name: "Флаг ожидания дневной сцены"
       selector:
         entity:
           domain: input_boolean
@@ -81,13 +81,13 @@ blueprint:
 
     apply_scene_on_mode_change:
       name: "Применять сцену сразу при переходе режима"
-      default: false
+      default: true
       selector:
         boolean: {}
 
     day_timeout_seconds:
       name: "Таймаут выключения днём (сек)"
-      default: 180
+      default: 45
       selector:
         number:
           min: 1
@@ -97,7 +97,7 @@ blueprint:
 
     night_timeout_seconds:
       name: "Таймаут выключения ночью (сек)"
-      default: 600
+      default: 15
       selector:
         number:
           min: 1
@@ -126,7 +126,7 @@ blueprint:
     night_start_time:
       name: "Время начала ночи (часы:минуты)"
       description: "Если выбран источник 'Фиксированное время' или 'Оба', ночной режим включится в это время."
-      default: "22:00:00"
+      default: "23:30:00"
       selector:
         time: {}
 
@@ -140,7 +140,7 @@ blueprint:
     night_mode_source:
       name: "Источник смены день/ночь"
       description: "Чем управлять переключением ночного режима"
-      default: "sun_sensors"
+      default: "fixed_time"
       selector:
         select:
           options:
@@ -184,7 +184,7 @@ blueprint:
 
     manual_on_day_timeout_seconds:
       name: "Таймаут ручного включения днём (сек)"
-      default: 900
+      default: 1200
       selector:
         number:
           min: 1
@@ -194,7 +194,7 @@ blueprint:
 
     manual_on_night_timeout_seconds:
       name: "Таймаут ручного включения ночью (сек)"
-      default: 1800
+      default: 600
       selector:
         number:
           min: 1
