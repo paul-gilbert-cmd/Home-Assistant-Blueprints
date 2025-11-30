@@ -485,8 +485,6 @@ action:
           - service: homeassistant.turn_off
             target: !input target_entities
 
-            default: []
-
           # 3.1 Ждём окончания движения/присутствия по основному датчику выключения
           - wait_for_trigger:
               - platform: state
