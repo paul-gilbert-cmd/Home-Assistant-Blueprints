@@ -1,13 +1,12 @@
 blueprint:
-  name: "DROZD light 2 sensors v1.2"
+  name: "DROZD light 2 sensors v1.0"
   description: >
-    Освещение по движению — переключение сцен и ночного режима по сенсорам солнца и времени
-    Включает свет по движению и выключает по таймауту (раздельно для дня/ночи).
-    Сцены применяются ОДИН РАЗ при первом включении после смены режима.
+    - Освещение по движению — переключение сцен и ночного режима по сенсорам солнца и времени
+    - Включает свет по движению и выключает по таймауту (раздельно для дня/ночи).
+    - Сцены применяются ОДИН РАЗ при первом включении после смены режима дня/ночи.
     Переключение между днём и ночью может происходить:
-    - по значениям сенсоров времени солнца (sensor.sun_next_setting / sensor.sun_next_rising и др.) — опционально,
-    - и/или по фиксированному времени начала и окончания ночи,
-    - в зависимости от выбранного источника.
+    - по значениям сенсоров времени солнца — опционально,
+    - и/или по фиксированному времени начала и окончания ночи.
 
   domain: automation
 
@@ -45,13 +44,13 @@ blueprint:
           multiple: true
 
     night_scene_pending_flag:
-      name: "Флаг ожидания ночной сцены"
+      name: "Флаг ожидания ночной сцены (input_boolean)"
       selector:
         entity:
           domain: input_boolean
 
     day_scene_pending_flag:
-      name: "Флаг ожидания дневной сцены"
+      name: "Флаг ожидания дневной сцены (input_boolean)"
       selector:
         entity:
           domain: input_boolean
@@ -59,7 +58,7 @@ blueprint:
     scene_apply_delay:
       name: "Время ожидания перед применением сцены (сек)"
       description: "Сколько ждать между включением света и применением сцены."
-      default: 3
+      default: 2
       selector:
         number:
           min: 0
@@ -107,15 +106,16 @@ blueprint:
 
     # Сенсоры времени смены день/ночь (ОПЦИОНАЛЬНО)
     sun_night_start_sensor:
-      name: "Сенсор начала ночи (опционально, например, sensor.sun_next_setting, sensor.sun_next_dusk)"
+      name: "Сенсор начала ночи (опционально)"
       default: ""
       selector:
         entity:
           domain: sensor
           multiple: false
+          # Можно будет оставить пустым в UI
 
     sun_night_end_sensor:
-      name: "Сенсор начала дня (опционально, например, sensor.sun_next_rising, sensor.sun_next_dawn)"
+      name: "Сенсор начала дня (опционально)"
       default: ""
       selector:
         entity:
@@ -124,14 +124,14 @@ blueprint:
 
     # Явное время начала и окончания ночи
     night_start_time:
-      name: "Время начала ночи (часы:минуты)"
+      name: "Время начала ночного режима"
       description: "Если выбран источник 'Фиксированное время' или 'Оба', ночной режим включится в это время."
       default: "23:30:00"
       selector:
         time: {}
 
     night_end_time:
-      name: "Время окончания ночи (часы:минуты)"
+      name: "Время окончания ночного режима"
       description: "Если выбран источник 'Фиксированное время' или 'Оба', ночной режим выключится в это время (начало дня)."
       default: "07:00:00"
       selector:
@@ -139,7 +139,7 @@ blueprint:
 
     night_mode_source:
       name: "Источник смены день/ночь"
-      description: "Чем управлять переключением ночного режима"
+      description: "Что управляет переключением ночного режима"
       default: "fixed_time"
       selector:
         select:
@@ -391,7 +391,6 @@ action:
         sequence:
           - service: homeassistant.turn_on
             target: !input target_entities
-          # Применение сцены с задержкой, если флаг pending — только при первом включении после смены режима
           - choose:
               - conditions:
                   - condition: template
@@ -424,7 +423,7 @@ action:
           - condition: trigger
             id: motion_off
           - condition: template
-            value_template: "{{ allow_auto_off }}"         # уважает enable_day/night_auto_off
+            value_template: "{{ allow_auto_off }}"
           - condition: template
             value_template: "{{ single_off_sensor_is_off }}"
         sequence:
@@ -435,7 +434,7 @@ action:
           - service: homeassistant.turn_off
             target: !input target_entities
 
-            # 3) Ручное включение
+      # 3) Ручное включение
       - conditions:
           - condition: trigger
             id: manual_on
@@ -447,7 +446,6 @@ action:
             value_template: >
               {{ (trigger.to_state.context and trigger.to_state.context.user_id) is not none }}
         sequence:
-          # Сцены при первом ручном включении после смены режима
           - choose:
               - conditions:
                   - condition: template
@@ -474,22 +472,11 @@ action:
                     target:
                       entity_id: "{{ day_flag }}"
             default: []
-
-          # 3.1) Ждём окончания движения/присутствия по основному датчику выключения
-          - wait_for_trigger:
-              - platform: state
-                entity_id: !input single_off_sensor
-                to: "off"
-            timeout:
-              minutes: 1440   # верхняя защита, чтобы не зависнуть навсегда
-            continue_on_timeout: false
-
-          # 3.2) Отсчёт таймаута от момента, когда движение прекратилось
           - delay:
               seconds: "{{ manual_timeout_seconds | int }}"
-
-          # 3.3) Если к концу таймаута датчик всё ещё не видит движения — выключаем свет
           - condition: template
             value_template: "{{ single_off_sensor_is_off }}"
           - service: homeassistant.turn_off
             target: !input target_entities
+
+    default: []
