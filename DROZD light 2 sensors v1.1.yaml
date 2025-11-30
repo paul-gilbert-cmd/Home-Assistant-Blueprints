@@ -44,13 +44,13 @@ blueprint:
           multiple: true
 
     night_scene_pending_flag:
-      name: "Флаг ожидания ночной сцены (input_boolean)"
+      name: "Флаг ожидания ночной сцены (вспомогательный переключатель)"
       selector:
         entity:
           domain: input_boolean
 
     day_scene_pending_flag:
-      name: "Флаг ожидания дневной сцены (input_boolean)"
+      name: "Флаг ожидания дневной сцены (вспомогательный переключатель)"
       selector:
         entity:
           domain: input_boolean
