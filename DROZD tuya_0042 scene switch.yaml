@@ -1,12 +1,14 @@
 blueprint:
-  name: "DROZD Tuya TS0042 (ZHA) – кнопки и перебор сцен"
+  name: "DROZD Tuya TS0042 (ZHA) – простые действия и перебор сцен"
   description: >
-    Blueprint для переключателя Tuya TS0042 (2 кнопки, ZHA).
-    - Фильтр по device_id (не нужно вводить IEEE).
-    - Левая и правая кнопки (endpoint_id 1 и 2).
-    - Одиночное, двойное и долгое нажатие – любые действия.
-    - Перебор сцен по кругу (отдельно для левой и правой кнопок) по той же логике,
-      что в рабочей автоматизации.
+    Для переключателя Tuya TS0042 (2 кнопки, ZHA, zha_event).
+    Использует device_id (не нужен IEEE).
+    Позволяет:
+      - задать простые действия для левой/правой кнопки (single/double/long);
+      - независимо настроить перебор сцен по кругу:
+          * отдельный набор сцен и input_number для левой кнопки;
+          * отдельный набор сцен и input_number для правой кнопки;
+          * отдельный жест (single/double/long) для запуска цикла.
 
   domain: automation
 
@@ -18,7 +20,7 @@ blueprint:
         device:
           integration: zha
 
-    # --- ЛЕВАЯ КНОПКА: ПРОСТЫЕ ДЕЙСТВИЯ ---
+    # ---------- ПРОСТЫЕ ДЕЙСТВИЯ: ЛЕВАЯ КНОПКА ----------
     left_single_action:
       name: "Левая кнопка – одиночное нажатие"
       default: []
@@ -37,7 +39,7 @@ blueprint:
       selector:
         action: {}
 
-    # --- ПРАВАЯ КНОПКА: ПРОСТЫЕ ДЕЙСТВИЯ ---
+    # ---------- ПРОСТЫЕ ДЕЙСТВИЯ: ПРАВАЯ КНОПКА ----------
     right_single_action:
       name: "Правая кнопка – одиночное нажатие"
       default: []
@@ -56,10 +58,10 @@ blueprint:
       selector:
         action: {}
 
-    # --- ПЕРЕБОР СЦЕН ЛЕВОЙ КНОПКОЙ ---
+    # ---------- ПЕРЕБОР СЦЕН: ЛЕВАЯ КНОПКА ----------
     left_cycle_enabled:
       name: "Перебор сцен (левая кнопка)"
-      description: "Включить перебор сцен по кругу для левой кнопки."
+      description: "Включить переключение заданных сцен по кругу для левой кнопки."
       default: false
       selector:
         boolean: {}
@@ -89,16 +91,16 @@ blueprint:
 
     left_cycle_index_helper:
       name: "input_number индекса сцен (левая кнопка)"
-      description: "input_number (min=0, max=N-1) для хранения индекса сцены."
+      description: "input_number (min=0, max=N-1), хранящий индекс текущей сцены левой кнопки."
       default:
       selector:
         entity:
           domain: input_number
 
-    # --- ПЕРЕБОР СЦЕН ПРАВОЙ КНОПКОЙ ---
+    # ---------- ПЕРЕБОР СЦЕН: ПРАВАЯ КНОПКА ----------
     right_cycle_enabled:
       name: "Перебор сцен (правая кнопка)"
-      description: "Включить перебор сцен по кругу для правой кнопки."
+      description: "Включить переключение заданных сцен по кругу для правой кнопки."
       default: false
       selector:
         boolean: {}
@@ -128,7 +130,7 @@ blueprint:
 
     right_cycle_index_helper:
       name: "input_number индекса сцен (правая кнопка)"
-      description: "input_number (min=0, max=N-1) для хранения индекса сцены."
+      description: "input_number (min=0, max=N-1), хранящий индекс текущей сцены правой кнопки."
       default:
       selector:
         entity:
@@ -173,9 +175,8 @@ action:
 
   - choose:
 
-      # ===== ЛЕВАЯ КНОПКА (endpoint_id = 1) =====
+      # ========== ЛЕВАЯ КНОПКА (endpoint_id = 1) – ПРОСТЫЕ ДЕЙСТВИЯ ==========
 
-      # Простые действия
       - conditions:
           - condition: template
             value_template: "{{ endpoint_id == 1 and press_type == 'single' }}"
@@ -191,7 +192,8 @@ action:
             value_template: "{{ endpoint_id == 1 and press_type == 'long' }}"
         sequence: !input left_long_action
 
-      # Перебор сцен – логика как в рабочей автоматизации
+      # ========== ЛЕВАЯ КНОПКА – ПЕРЕБОР СЦЕН ==========
+
       - conditions:
           - condition: template
             value_template: >
@@ -222,9 +224,8 @@ action:
             data:
               value: "{{ next_index }}"
 
-      # ===== ПРАВАЯ КНОПКА (endpoint_id = 2) =====
+      # ========== ПРАВАЯ КНОПКА (endpoint_id = 2) – ПРОСТЫЕ ДЕЙСТВИЯ ==========
 
-      # Простые действия
       - conditions:
           - condition: template
             value_template: "{{ endpoint_id == 2 and press_type == 'single' }}"
@@ -240,7 +241,8 @@ action:
             value_template: "{{ endpoint_id == 2 and press_type == 'long' }}"
         sequence: !input right_long_action
 
-      # Перебор сцен правой кнопкой – тот же алгоритм
+      # ========== ПРАВАЯ КНОПКА – ПЕРЕБОР СЦЕН ==========
+
       - conditions:
           - condition: template
             value_template: >
