@@ -451,6 +451,9 @@ action:
           # Дополнительная защита: если мы в ночном режиме и ночное авто-выключение выключено — не гасим
           - condition: template
             value_template: "{{ not block_night_auto_off }}"
+          # Если авто-выключение ручного включения отключено — вообще не выключаем по движению
+          - condition: template
+            value_template: "{{ manual_on_auto_off_enabled }}"
         sequence:
           - delay:
               seconds: "{{ motion_timeout_seconds | int }}"
@@ -458,7 +461,7 @@ action:
             value_template: "{{ single_off_sensor_is_off }}"
           - service: homeassistant.turn_off
             target: !input target_entities
-
+            
       # 3) Ручное включение
       - conditions:
           - condition: trigger
