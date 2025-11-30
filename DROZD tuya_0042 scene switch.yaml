@@ -1,11 +1,13 @@
 blueprint:
-  name: "DROZD - Tuya TS0042 (2 кнопки, ZHA) универсальный"
+  name: "DROZD Tuya TS0042 (2 кнопки, ZHA) универсальный"
   description: >
-    Универсальный blueprint для выключателя Tuya TS0042 (2 кнопки, ZHA).
-    Поддерживает одиночное, двойное и долгое нажатие для левой (endpoint 1)
-    и правой (endpoint 2) кнопок. Все действия настраиваются: можно вызывать
-    любые сервисы, переключать сцены по кругу и т.д.
+    Универсальный blueprint для переключателя Tuya TS0042 (2 кнопки, ZHA, zha_event).
+    Поддерживает одиночное, двойное и долгое нажатие для левой (endpoint_id = 1)
+    и правой (endpoint_id = 2) кнопок.
+    Можно назначать любые действия, а также переключать сцены по кругу.
+
   domain: automation
+
   input:
     switch_ieee:
       name: "Переключатель (TS0042, ZHA)"
@@ -14,78 +16,61 @@ blueprint:
         device:
           integration: zha
 
-    # ---------------- БАЗОВЫЕ ДЕЙСТВИЯ ----------------
-
+    # ---------------- ЛЕВАЯ КНОПКА ----------------
     left_single_action:
       name: "Левая кнопка — одиночное нажатие"
-      description: "Действия при одиночном нажатии левой кнопки"
+      description: "Действия при одиночном нажатии левой кнопки (endpoint_id = 1, remote_button_short_press)"
       default: []
       selector:
         action: {}
 
     left_double_action:
       name: "Левая кнопка — двойное нажатие"
-      description: "Действия при двойном нажатии левой кнопки"
+      description: "Действия при двойном нажатии левой кнопки (endpoint_id = 1, remote_button_double_press)"
       default: []
       selector:
         action: {}
 
     left_long_action:
       name: "Левая кнопка — долгое нажатие"
-      description: "Действия при долгом нажатии левой кнопки"
+      description: "Действия при долгом нажатии левой кнопки (endpoint_id = 1, remote_button_long_press)"
       default: []
       selector:
         action: {}
 
+    # ---------------- ПРАВАЯ КНОПКА ----------------
     right_single_action:
       name: "Правая кнопка — одиночное нажатие"
-      description: "Действия при одиночном нажатии правой кнопки"
+      description: "Действия при одиночном нажатии правой кнопки (endpoint_id = 2, remote_button_short_press)"
       default: []
       selector:
         action: {}
 
     right_double_action:
       name: "Правая кнопка — двойное нажатие"
-      description: "Действия при двойном нажатии правой кнопки"
+      description: "Действия при двойном нажатии правой кнопки (endpoint_id = 2, remote_button_double_press)"
       default: []
       selector:
         action: {}
 
     right_long_action:
       name: "Правая кнопка — долгое нажатие"
-      description: "Действия при долгом нажатии правой кнопки"
+      description: "Действия при долгом нажатии правой кнопки (endpoint_id = 2, remote_button_long_press)"
       default: []
       selector:
         action: {}
 
-    # ---------------- УНИВЕРСАЛЬНЫЙ ЦИКЛ СЦЕН ----------------
-
-    cycle_enabled:
-      name: "Включить перебор сцен по кругу"
-      description: >
-        Включает универсальный механизм переключения сцен по кругу.
-        Если выключено, настройки ниже игнорируются.
+    # ---------------- ПЕРЕБОР СЦЕН ЛЕВАЯ КНОПКА ----------------
+    left_cycle_enabled:
+      name: "Перебор сцен по кругу для левой кнопки"
+      description: "Включить переключение сцен по кругу для левой кнопки."
       default: false
       selector:
         boolean: {}
 
-    cycle_trigger_button:
-      name: "Кнопка для перебора сцен"
-      description: >
-        Какой кнопкой запускать перебор сцен.
-        Левая = endpoint 1, правая = endpoint 2.
-      default: left
-      selector:
-        select:
-          options:
-            - label: "Левая кнопка (endpoint 1)"
-              value: left
-            - label: "Правая кнопка (endpoint 2)"
-              value: right
-
-    cycle_trigger_press_type:
-      name: "Тип нажатия для перебора сцен"
-      description: "Какой жест использовать для перебора сцен (одиночное/двойное/долгое нажатие)."
+    left_cycle_press_type:
+      name: "Тип нажатия для перебора сцен (левая кнопка)"
+      description: "Какой жест левой кнопки использовать для перебора сцен."
       default: double
       selector:
         select:
@@ -97,22 +82,57 @@ blueprint:
             - label: "Долгое нажатие"
               value: long
 
-    cycle_scenes:
-      name: "Список сцен для перебора"
-      description: >
-        Выберите сцены в том порядке, в котором их нужно переключать по кругу.
-        Можно указать любые сцены и любое их количество.
+    left_cycle_scenes:
+      name: "Сцены для перебора (левая кнопка)"
+      description: "Список сцен, которые будут переключаться по кругу левой кнопкой."
       default: []
       selector:
         entity:
           domain: scene
           multiple: true
 
-    cycle_index_helper:
-      name: "input_number для хранения индекса сцены"
-      description: >
-        Выберите helper input_number (min=0, max=N-1), который будет хранить
-        текущий индекс сцены. Для разных помещений можно использовать разные helpers.
+    left_cycle_index_helper:
+      name: "input_number индекса сцены (левая кнопка)"
+      description: "input_number, хранящий индекс сцены для левой кнопки (min=0, max=N-1)."
+      default:
+      selector:
+        entity:
+          domain: input_number
+
+    # ---------------- ПЕРЕБОР СЦЕН ПРАВАЯ КНОПКА ----------------
+    right_cycle_enabled:
+      name: "Перебор сцен по кругу для правой кнопки"
+      description: "Включить переключение сцен по кругу для правой кнопки."
+      default: false
+      selector:
+        boolean: {}
+
+    right_cycle_press_type:
+      name: "Тип нажатия для перебора сцен (правая кнопка)"
+      description: "Какой жест правой кнопки использовать для перебора сцен."
+      default: double
+      selector:
+        select:
+          options:
+            - label: "Одиночное нажатие"
+              value: single
+            - label: "Двойное нажатие"
+              value: double
+            - label: "Долгое нажатие"
+              value: long
+
+    right_cycle_scenes:
+      name: "Сцены для перебора (правая кнопка)"
+      description: "Список сцен, которые будут переключаться по кругу правой кнопкой."
+      default: []
+      selector:
+        entity:
+          domain: scene
+          multiple: true
+
+    right_cycle_index_helper:
+      name: "input_number индекса сцены (правая кнопка)"
+      description: "input_number, хранящий индекс сцены для правой кнопки (min=0, max=N-1)."
       default:
       selector:
         entity:
@@ -123,11 +143,16 @@ max_exceeded: silent
 
 variables:
   switch_ieee: !input switch_ieee
-  cycle_enabled: !input cycle_enabled
-  cycle_trigger_button: !input cycle_trigger_button
-  cycle_trigger_press_type: !input cycle_trigger_press_type
-  cycle_scenes: !input cycle_scenes
-  cycle_index_helper: !input cycle_index_helper
+
+  left_cycle_enabled: !input left_cycle_enabled
+  left_cycle_press_type: !input left_cycle_press_type
+  left_cycle_scenes: !input left_cycle_scenes
+  left_cycle_index_helper: !input left_cycle_index_helper
+
+  right_cycle_enabled: !input right_cycle_enabled
+  right_cycle_press_type: !input right_cycle_press_type
+  right_cycle_scenes: !input right_cycle_scenes
+  right_cycle_index_helper: !input right_cycle_index_helper
 
 trigger:
   - platform: event
@@ -149,66 +174,40 @@ action:
         {% else %}
           unknown
         {% endif %}
-      button: >
-        {% if endpoint_id == 1 %}
-          left
-        {% elif endpoint_id == 2 %}
-          right
-        {% else %}
-          unknown
-        {% endif %}
 
   - choose:
 
-      # ---------- БАЗОВЫЕ ДЕЙСТВИЯ ДЛЯ КНОПОК ----------
+      # ---------- ЛЕВАЯ КНОПКА (endpoint_id = 1) ----------
 
-      # Левая кнопка
       - conditions:
           - condition: template
-            value_template: "{{ button == 'left' and press_type == 'single' }}"
+            value_template: "{{ endpoint_id == 1 and press_type == 'single' }}"
         sequence: !input left_single_action
 
       - conditions:
           - condition: template
-            value_template: "{{ button == 'left' and press_type == 'double' }}"
+            value_template: "{{ endpoint_id == 1 and press_type == 'double' }}"
         sequence: !input left_double_action
 
       - conditions:
           - condition: template
-            value_template: "{{ button == 'left' and press_type == 'long' }}"
+            value_template: "{{ endpoint_id == 1 and press_type == 'long' }}"
         sequence: !input left_long_action
 
-      # Правая кнопка
-      - conditions:
-          - condition: template
-            value_template: "{{ button == 'right' and press_type == 'single' }}"
-        sequence: !input right_single_action
-
-      - conditions:
-          - condition: template
-            value_template: "{{ button == 'right' and press_type == 'double' }}"
-        sequence: !input right_double_action
-
-      - conditions:
-          - condition: template
-            value_template: "{{ button == 'right' and press_type == 'long' }}"
-        sequence: !input right_long_action
-
-      # ---------- УНИВЕРСАЛЬНЫЙ ПЕРЕБОР СЦЕН ----------
-
+      # Перебор сцен левой кнопкой
       - conditions:
           - condition: template
             value_template: >
-              {{ cycle_enabled
-                 and button == cycle_trigger_button
-                 and press_type == cycle_trigger_press_type
-                 and (cycle_scenes.entity_id | count) > 0
-                 and cycle_index_helper is not none }}
+              {{ endpoint_id == 1
+                 and left_cycle_enabled
+                 and press_type == left_cycle_press_type
+                 and (left_cycle_scenes.entity_id | count) > 0
+                 and left_cycle_index_helper is not none }}
         sequence:
           - variables:
-              scenes_list: "{{ cycle_scenes.entity_id }}"
+              scenes_list: "{{ left_cycle_scenes.entity_id }}"
               max_index: "{{ (scenes_list | count) - 1 }}"
-              current_index: "{{ states(cycle_index_helper) | int(0) }}"
+              current_index: "{{ states(left_cycle_index_helper) | int(0) }}"
               next_index: >
                 {% if current_index >= max_index %}
                   0
@@ -220,6 +219,52 @@ action:
               entity_id: "{{ scenes_list[next_index | int] }}"
           - service: input_number.set_value
             target:
-              entity_id: "{{ cycle_index_helper }}"
+              entity_id: "{{ left_cycle_index_helper }}"
+            data:
+              value: "{{ next_index }}"
+
+      # ---------- ПРАВАЯ КНОПКА (endpoint_id = 2) ----------
+
+      - conditions:
+          - condition: template
+            value_template: "{{ endpoint_id == 2 and press_type == 'single' }}"
+        sequence: !input right_single_action
+
+      - conditions:
+          - condition: template
+            value_template: "{{ endpoint_id == 2 and press_type == 'double' }}"
+        sequence: !input right_double_action
+
+      - conditions:
+          - condition: template
+            value_template: "{{ endpoint_id == 2 and press_type == 'long' }}"
+        sequence: !input right_long_action
+
+      # Перебор сцен правой кнопкой
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ endpoint_id == 2
+                 and right_cycle_enabled
+                 and press_type == right_cycle_press_type
+                 and (right_cycle_scenes.entity_id | count) > 0
+                 and right_cycle_index_helper is not none }}
+        sequence:
+          - variables:
+              scenes_list: "{{ right_cycle_scenes.entity_id }}"
+              max_index: "{{ (scenes_list | count) - 1 }}"
+              current_index: "{{ states(right_cycle_index_helper) | int(0) }}"
+              next_index: >
+                {% if current_index >= max_index %}
+                  0
+                {% else %}
+                  {{ current_index + 1 }}
+                {% endif %}
+          - service: scene.turn_on
+            target:
+              entity_id: "{{ scenes_list[next_index | int] }}"
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ right_cycle_index_helper }}"
             data:
               value: "{{ next_index }}"
