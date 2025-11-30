@@ -248,9 +248,32 @@ action:
                 {% else %}
                   {{ current_index + 1 }}
                 {% endif %}
+              next_scene: "{{ left_scenes_list[next_index | int] }}"
+          # ЛОГИ
+          - service: system_log.write
+            data:
+              level: warning
+              message: >
+                TS0042 left cycle:
+                endpoint={{ endpoint_id }},
+                press_type={{ press_type }},
+                scenes={{ left_scenes_list }},
+                current_index={{ current_index }},
+                next_index={{ next_index }},
+                next_scene={{ next_scene }}
+          - service: persistent_notification.create
+            data:
+              title: "TS0042 левый цикл сцен"
+              message: >
+                Перебор сцен (левая):
+                current_index={{ current_index }},
+                next_index={{ next_index }},
+                next_scene={{ next_scene }}
+          # ВЫЗОВ СЦЕНЫ
           - service: scene.turn_on
             target:
-              entity_id: "{{ left_scenes_list[next_index | int] }}"
+              entity_id: "{{ next_scene }}"
+          # ОБНОВЛЕНИЕ ИНДЕКСА
           - service: input_number.set_value
             target:
               entity_id: "{{ left_cycle_index_helper }}"
@@ -294,9 +317,32 @@ action:
                 {% else %}
                   {{ current_index + 1 }}
                 {% endif %}
+              next_scene: "{{ right_scenes_list[next_index | int] }}"
+          # ЛОГИ
+          - service: system_log.write
+            data:
+              level: warning
+              message: >
+                TS0042 right cycle:
+                endpoint={{ endpoint_id }},
+                press_type={{ press_type }},
+                scenes={{ right_scenes_list }},
+                current_index={{ current_index }},
+                next_index={{ next_index }},
+                next_scene={{ next_scene }}
+          - service: persistent_notification.create
+            data:
+              title: "TS0042 правый цикл сцен"
+              message: >
+                Перебор сцен (правая):
+                current_index={{ current_index }},
+                next_index={{ next_index }},
+                next_scene={{ next_scene }}
+          # ВЫЗОВ СЦЕНЫ
           - service: scene.turn_on
             target:
-              entity_id: "{{ right_scenes_list[next_index | int] }}"
+              entity_id: "{{ next_scene }}"
+          # ОБНОВЛЕНИЕ ИНДЕКСА
           - service: input_number.set_value
             target:
               entity_id: "{{ right_cycle_index_helper }}"
