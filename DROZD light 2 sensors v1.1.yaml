@@ -1,5 +1,5 @@
 blueprint:
-  name: "DROZD light 2 sensors v1.0"
+  name: "DROZD light 2 sensors v1.1"
   description: >
     - Освещение по движению — переключение сцен и ночного режима по сенсорам солнца и времени
     - Включает свет по движению и выключает по таймауту (раздельно для дня/ночи).
@@ -238,6 +238,7 @@ variables:
   manual_timeout_seconds: "{{ manual_on_night_timeout_seconds if is_night else manual_on_day_timeout_seconds }}"
   allow_auto_on: "{{ enable_night_auto_on if is_night else enable_day_auto_on }}"
   allow_auto_off: "{{ enable_night_auto_off if is_night else enable_day_auto_off }}"
+  
   # Явный запрет авто-выключения, если мы в ночном режиме и ночное авто-выключение отключено
   block_night_auto_off: "{{ is_night and not enable_night_auto_off }}"
 
@@ -484,4 +485,23 @@ action:
           - service: homeassistant.turn_off
             target: !input target_entities
 
-    default: []
+            default: []
+
+          # 3.1 Ждём окончания движения/присутствия по основному датчику выключения
+          - wait_for_trigger:
+              - platform: state
+                entity_id: !input single_off_sensor
+                to: "off"
+            timeout:
+              hours: 24
+            continue_on_timeout: false
+
+          # 3.2 Отсчёт таймаута от момента, когда движение прекратилось
+          - delay:
+              seconds: "{{ manual_timeout_seconds | int }}"
+
+          # 3.3 Если к концу таймаута датчик всё ещё не видит движения — выключаем свет
+          - condition: template
+            value_template: "{{ single_off_sensor_is_off }}"
+          - service: homeassistant.turn_off
+            target: !input target_entities
