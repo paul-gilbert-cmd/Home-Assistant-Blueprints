@@ -1,0 +1,44 @@
+blueprint:
+  name: "Tuya TS0042 (тестовый лог)"
+  description: >
+    Тестовый blueprint для проверки событий от Tuya TS0042 (2 кнопки, ZHA).
+    Просто пишет в лог и уведомление, какие данные пришли.
+  domain: automation
+  input:
+    switch_ieee:
+      name: "Переключатель (TS0042, ZHA)"
+      description: "Выберите устройство TS0042, подключённое через ZHA"
+      selector:
+        device:
+          integration: zha
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  switch_ieee: !input switch_ieee
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_ieee: !input switch_ieee
+
+action:
+  - variables:
+      endpoint_id: "{{ trigger.event.data.endpoint_id | int }}"
+      command: "{{ trigger.event.data.command }}"
+  - service: system_log.write
+    data:
+      level: warning
+      message: >
+        TS0042 event: endpoint={{ endpoint_id }}, command={{ command }},
+        raw={{ trigger.event.data | tojson }}
+  - service: persistent_notification.create
+    data:
+      title: "TS0042 событие"
+      message: >
+        Получено событие от TS0042:
+        endpoint={{ endpoint_id }},
+        command={{ command }},
+        raw={{ trigger.event.data | tojson }}
