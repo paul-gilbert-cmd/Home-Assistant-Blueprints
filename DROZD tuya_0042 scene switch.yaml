@@ -180,6 +180,35 @@ action:
           unknown
         {% endif %}
 
+      # Нормализуем список сцен: превращаем в массив entity_id
+      left_scenes_list: >
+        {% set e = left_cycle_scenes %}
+        {% if e is mapping and 'entity_id' in e %}
+          {% if e.entity_id is string %}
+            [ e.entity_id ]
+          {% else %}
+            {{ e.entity_id }}
+          {% endif %}
+        {% elif e is string %}
+          [ e ]
+        {% else %}
+          {{ [] }}
+        {% endif %}
+
+      right_scenes_list: >
+        {% set e = right_cycle_scenes %}
+        {% if e is mapping and 'entity_id' in e %}
+          {% if e.entity_id is string %}
+            [ e.entity_id ]
+          {% else %}
+            {{ e.entity_id }}
+          {% endif %}
+        {% elif e is string %}
+          [ e ]
+        {% else %}
+          {{ [] }}
+        {% endif %}
+
   - choose:
 
       # ---------- ЛЕВАЯ КНОПКА (endpoint_id = 1) ----------
@@ -207,12 +236,11 @@ action:
               {{ endpoint_id == 1
                  and left_cycle_enabled
                  and press_type == left_cycle_press_type
-                 and (left_cycle_scenes.entity_id | count) > 0
+                 and (left_scenes_list | count) > 0
                  and left_cycle_index_helper is not none }}
         sequence:
           - variables:
-              scenes_list: "{{ left_cycle_scenes.entity_id }}"
-              max_index: "{{ (scenes_list | count) - 1 }}"
+              max_index: "{{ (left_scenes_list | count) - 1 }}"
               current_index: "{{ states(left_cycle_index_helper) | int(0) }}"
               next_index: >
                 {% if current_index >= max_index %}
@@ -222,7 +250,7 @@ action:
                 {% endif %}
           - service: scene.turn_on
             target:
-              entity_id: "{{ scenes_list[next_index | int] }}"
+              entity_id: "{{ left_scenes_list[next_index | int] }}"
           - service: input_number.set_value
             target:
               entity_id: "{{ left_cycle_index_helper }}"
@@ -254,12 +282,11 @@ action:
               {{ endpoint_id == 2
                  and right_cycle_enabled
                  and press_type == right_cycle_press_type
-                 and (right_cycle_scenes.entity_id | count) > 0
+                 and (right_scenes_list | count) > 0
                  and right_cycle_index_helper is not none }}
         sequence:
           - variables:
-              scenes_list: "{{ right_cycle_scenes.entity_id }}"
-              max_index: "{{ (scenes_list | count) - 1 }}"
+              max_index: "{{ (right_scenes_list | count) - 1 }}"
               current_index: "{{ states(right_cycle_index_helper) | int(0) }}"
               next_index: >
                 {% if current_index >= max_index %}
@@ -269,7 +296,7 @@ action:
                 {% endif %}
           - service: scene.turn_on
             target:
-              entity_id: "{{ scenes_list[next_index | int] }}"
+              entity_id: "{{ right_scenes_list[next_index | int] }}"
           - service: input_number.set_value
             target:
               entity_id: "{{ right_cycle_index_helper }}"
