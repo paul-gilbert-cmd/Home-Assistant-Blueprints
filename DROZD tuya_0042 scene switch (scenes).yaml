@@ -1,0 +1,196 @@
+blueprint:
+  name: "DROZD Tuya TS0042 (ZHA) – перебор сцен по кругу"
+  description: >
+    Перебор сцен по кругу для переключателя Tuya TS0042 (2 кнопки, ZHA, zha_event).
+    - Фильтрация по device_id (не нужен IEEE).
+    - Отдельные наборы сцен и input_number для левой и правой кнопок.
+    - Выбор жеста (single/double/long) для запуска цикла на каждой кнопке.
+
+  domain: automation
+
+  input:
+    zha_device:
+      name: "Переключатель (TS0042, ZHA)"
+      description: "Выберите устройство TS0042, подключённое через ZHA"
+      selector:
+        device:
+          integration: zha
+
+    # ---- ЛЕВАЯ КНОПКА: настройки цикла ----
+    left_cycle_enabled:
+      name: "Левая кнопка – включить перебор сцен"
+      description: "Включить перебор сцен по кругу при заданном нажатии левой кнопки."
+      default: false
+      selector:
+        boolean: {}
+
+    left_cycle_press_type:
+      name: "Левая кнопка – жест для перебора сцен"
+      description: "Какое нажатие левой кнопки запускает перебор сцен."
+      default: double
+      selector:
+        select:
+          options:
+            - label: "Одиночное нажатие"
+              value: single
+            - label: "Двойное нажатие"
+              value: double
+            - label: "Долгое нажатие"
+              value: long
+
+    left_cycle_scenes:
+      name: "Левая кнопка – сцены для перебора"
+      description: "Сцены, которые будут переключаться по кругу левой кнопкой."
+      default: []
+      selector:
+        entity:
+          domain: scene
+          multiple: true
+
+    left_cycle_index_helper:
+      name: "Левая кнопка – input_number индекса сцены"
+      description: "input_number (min=0, max=N-1), хранящий текущий индекс сцены."
+      default:
+      selector:
+        entity:
+          domain: input_number
+
+    # ---- ПРАВАЯ КНОПКА: настройки цикла ----
+    right_cycle_enabled:
+      name: "Правая кнопка – включить перебор сцен"
+      description: "Включить перебор сцен по кругу при заданном нажатии правой кнопки."
+      default: false
+      selector:
+        boolean: {}
+
+    right_cycle_press_type:
+      name: "Правая кнопка – жест для перебора сцен"
+      description: "Какое нажатие правой кнопки запускает перебор сцен."
+      default: double
+      selector:
+        select:
+          options:
+            - label: "Одиночное нажатие"
+              value: single
+            - label: "Двойное нажатие"
+              value: double
+            - label: "Долгое нажатие"
+              value: long
+
+    right_cycle_scenes:
+      name: "Правая кнопка – сцены для перебора"
+      description: "Сцены, которые будут переключаться по кругу правой кнопкой."
+      default: []
+      selector:
+        entity:
+          domain: scene
+          multiple: true
+
+    right_cycle_index_helper:
+      name: "Правая кнопка – input_number индекса сцены"
+      description: "input_number (min=0, max=N-1), хранящий текущий индекс сцены."
+      default:
+      selector:
+        entity:
+          domain: input_number
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  zha_device: !input zha_device
+
+  left_cycle_enabled: !input left_cycle_enabled
+  left_cycle_press_type: !input left_cycle_press_type
+  left_cycle_scenes: !input left_cycle_scenes
+  left_cycle_index_helper: !input left_cycle_index_helper
+
+  right_cycle_enabled: !input right_cycle_enabled
+  right_cycle_press_type: !input right_cycle_press_type
+  right_cycle_scenes: !input right_cycle_scenes
+  right_cycle_index_helper: !input right_cycle_index_helper
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input zha_device
+
+action:
+  - variables:
+      endpoint_id: "{{ trigger.event.data.endpoint_id | int }}"
+      command: "{{ trigger.event.data.command }}"
+      press_type: >
+        {% if command == 'remote_button_short_press' %}
+          single
+        {% elif command == 'remote_button_double_press' %}
+          double
+        {% elif command == 'remote_button_long_press' %}
+          long
+        {% else %}
+          unknown
+        {% endif %}
+
+  - choose:
+
+      # ===== ЛЕВАЯ КНОПКА: цикл сцен =====
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ endpoint_id == 1
+                 and left_cycle_enabled
+                 and press_type == left_cycle_press_type
+                 and left_cycle_scenes is not none
+                 and (left_cycle_scenes | count) > 0
+                 and left_cycle_index_helper is not none }}
+        sequence:
+          - variables:
+              scenes: "{{ left_cycle_scenes }}"
+              max_index: "{{ (scenes | count) - 1 }}"
+              current_index: "{{ states(left_cycle_index_helper) | int(0) }}"
+              next_index: >
+                {% if current_index >= max_index %}
+                  0
+                {% else %}
+                  {{ current_index + 1 }}
+                {% endif %}
+              next_scene: "{{ scenes[next_index | int] }}"
+          - service: scene.turn_on
+            target:
+              entity_id: "{{ next_scene }}"
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ left_cycle_index_helper }}"
+            data:
+              value: "{{ next_index }}"
+
+      # ===== ПРАВАЯ КНОПКА: цикл сцен =====
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ endpoint_id == 2
+                 and right_cycle_enabled
+                 and press_type == right_cycle_press_type
+                 and right_cycle_scenes is not none
+                 and (right_cycle_scenes | count) > 0
+                 and right_cycle_index_helper is not none }}
+        sequence:
+          - variables:
+              scenes: "{{ right_cycle_scenes }}"
+              max_index: "{{ (scenes | count) - 1 }}"
+              current_index: "{{ states(right_cycle_index_helper) | int(0) }}"
+              next_index: >
+                {% if current_index >= max_index %}
+                  0
+                {% else %}
+                  {{ current_index + 1 }}
+                {% endif %}
+              next_scene: "{{ scenes[next_index | int] }}"
+          - service: scene.turn_on
+            target:
+              entity_id: "{{ next_scene }}"
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ right_cycle_index_helper }}"
+            data:
+              value: "{{ next_index }}"
