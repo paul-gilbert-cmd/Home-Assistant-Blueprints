@@ -231,9 +231,28 @@ variables:
   enable_night_auto_off: !input enable_night_auto_off
   manual_on_auto_off_enabled: !input manual_on_auto_off_enabled
 
-  # Логика режимов через helpers (флаги)
-  is_night: "{{ states(night_flag) == 'on' }}"
-  is_day: "{{ states(day_flag) == 'on' }}"
+  # Логика режимов через helpers (флаги) + проверка по фиксированному времени
+  # Текущее время в формате HH:MM:SS
+  current_time: "{{ now().strftime('%H:%M:%S') }}"
+  night_start_time_var: !input night_start_time
+  night_end_time_var: !input night_end_time
+
+  # Ночь по времени: если используется fixed_time или both
+  is_night_by_time: >-
+    {% if night_mode_source in ['fixed_time', 'both'] %}
+      {% if night_start_time_var < night_end_time_var %}
+        {# ночь в пределах одних суток, например 22:00–07:00 (формально “обрыв”) #}
+        {{ current_time >= night_start_time_var or current_time < night_end_time_var }}
+      {% else %}
+        {# редкий случай, если кто-то выставит, скажем, 07:00–06:00 #}
+        {{ current_time >= night_start_time_var or current_time < night_end_time_var }}
+      {% endif %}
+    {% else %}
+      false
+    {% endif %}
+
+  is_night: "{{ states(night_flag) == 'on' or is_night_by_time }}"
+  is_day: "{{ not is_night }}"
   motion_timeout_seconds: "{{ night_timeout_seconds if is_night else day_timeout_seconds }}"
   manual_timeout_seconds: "{{ manual_on_night_timeout_seconds if is_night else manual_on_day_timeout_seconds }}"
   allow_auto_on: "{{ enable_night_auto_on if is_night else enable_day_auto_on }}"
