@@ -1,68 +1,169 @@
 blueprint:
-  name: "Tuya TS0042 (2 кнопки, ZHA) универсальный (с логом)"
+  name: "DROZD Tuya TS0042 (2 кнопки, ZHA) универсальный"
   description: >
     Универсальный blueprint для переключателя Tuya TS0042 (2 кнопки, ZHA, zha_event).
-    Поддерживает одиночное, двойное и долгое нажатие для левой (endpoint_id = 1)
-    и правой (endpoint_id = 2) кнопок.
-    В каждой ветке есть лог-уведомление для отладки.
+    Использует device_id, поэтому не нужно вручную вводить IEEE.
+    Поддерживает:
+      - левая/правая кнопка (endpoint_id = 1 / 2),
+      - одиночное, двойное и долгое нажатие,
+      - произвольные действия на каждый жест,
+      - перебор сцен по кругу для левой и правой кнопок отдельно.
 
   domain: automation
 
   input:
-    switch_ieee:
+    zha_device:
       name: "Переключатель (TS0042, ZHA)"
       description: "Выберите устройство TS0042, подключённое через ZHA"
       selector:
         device:
           integration: zha
 
+    # -------- ЛЕВАЯ КНОПКА: ПРОСТЫЕ ДЕЙСТВИЯ --------
     left_single_action:
       name: "Левая кнопка — одиночное нажатие"
+      description: "Действия при одиночном нажатии левой кнопки"
       default: []
       selector:
         action: {}
 
     left_double_action:
       name: "Левая кнопка — двойное нажатие"
+      description: "Действия при двойном нажатии левой кнопки"
       default: []
       selector:
         action: {}
 
     left_long_action:
       name: "Левая кнопка — долгое нажатие"
+      description: "Действия при долгом нажатии левой кнопки"
       default: []
       selector:
         action: {}
 
+    # -------- ПРАВАЯ КНОПКА: ПРОСТЫЕ ДЕЙСТВИЯ --------
     right_single_action:
       name: "Правая кнопка — одиночное нажатие"
+      description: "Действия при одиночном нажатии правой кнопки"
       default: []
       selector:
         action: {}
 
     right_double_action:
       name: "Правая кнопка — двойное нажатие"
+      description: "Действия при двойном нажатии правой кнопки"
       default: []
       selector:
         action: {}
 
     right_long_action:
       name: "Правая кнопка — долгое нажатие"
+      description: "Действия при долгом нажатии правой кнопки"
       default: []
       selector:
         action: {}
+
+    # -------- ПЕРЕБОР СЦЕН ДЛЯ ЛЕВОЙ КНОПКИ --------
+    left_cycle_enabled:
+      name: "Перебор сцен по кругу (левая кнопка)"
+      description: "Включить переключение сцен по кругу для левой кнопки."
+      default: false
+      selector:
+        boolean: {}
+
+    left_cycle_press_type:
+      name: "Тип нажатия для перебора сцен (левая кнопка)"
+      description: "Какой жест левой кнопки использовать для перебора сцен."
+      default: double
+      selector:
+        select:
+          options:
+            - label: "Одиночное нажатие"
+              value: single
+            - label: "Двойное нажатие"
+              value: double
+            - label: "Долгое нажатие"
+              value: long
+
+    left_cycle_scenes:
+      name: "Сцены для перебора (левая кнопка)"
+      description: "Список сцен, которые будут переключаться по кругу левой кнопкой."
+      default: []
+      selector:
+        entity:
+          domain: scene
+          multiple: true
+
+    left_cycle_index_helper:
+      name: "input_number индекса сцены (левая кнопка)"
+      description: "Выберите input_number (min=0, max=N-1) для хранения индекса сцены левой кнопки."
+      default:
+      selector:
+        entity:
+          domain: input_number
+
+    # -------- ПЕРЕБОР СЦЕН ДЛЯ ПРАВОЙ КНОПКИ --------
+    right_cycle_enabled:
+      name: "Перебор сцен по кругу (правая кнопка)"
+      description: "Включить переключение сцен по кругу для правой кнопки."
+      default: false
+      selector:
+        boolean: {}
+
+    right_cycle_press_type:
+      name: "Тип нажатия для перебора сцен (правая кнопка)"
+      description: "Какой жест правой кнопки использовать для перебора сцен."
+      default: double
+      selector:
+        select:
+          options:
+            - label: "Одиночное нажатие"
+              value: single
+            - label: "Двойное нажатие"
+              value: double
+            - label: "Долгое нажатие"
+              value: long
+
+    right_cycle_scenes:
+      name: "Сцены для перебора (правая кнопка)"
+      description: "Список сцен, которые будут переключаться по кругу правой кнопкой."
+      default: []
+      selector:
+        entity:
+          domain: scene
+          multiple: true
+
+    right_cycle_index_helper:
+      name: "input_number индекса сцены (правая кнопка)"
+      description: "Выберите input_number (min=0, max=N-1) для хранения индекса сцены правой кнопки."
+      default:
+      selector:
+        entity:
+          domain: input_number
 
 mode: restart
 max_exceeded: silent
 
 variables:
-  switch_ieee: !input switch_ieee
+  # Здесь будет device_id, который UI подставит автоматически
+  zha_device: !input zha_device
+
+  left_cycle_enabled: !input left_cycle_enabled
+  left_cycle_press_type: !input left_cycle_press_type
+  left_cycle_scenes: !input left_cycle_scenes
+  left_cycle_index_helper: !input left_cycle_index_helper
+
+  right_cycle_enabled: !input right_cycle_enabled
+  right_cycle_press_type: !input right_cycle_press_type
+  right_cycle_scenes: !input right_cycle_scenes
+  right_cycle_index_helper: !input right_cycle_index_helper
 
 trigger:
   - platform: event
     event_type: zha_event
+    # Важно: фильтрация по device_id, а не по device_ieee
     event_data:
-      device_ieee: !input switch_ieee
+      device_id: !input zha_device
 
 action:
   - variables:
@@ -81,96 +182,96 @@ action:
 
   - choose:
 
-      # ---------- Левая кнопка (endpoint_id = 1) ----------
+      # ---------- ЛЕВАЯ КНОПКА (endpoint_id = 1) ----------
 
+      # Простые действия
       - conditions:
           - condition: template
             value_template: "{{ endpoint_id == 1 and press_type == 'single' }}"
-        sequence:
-          - service: persistent_notification.create
-            data:
-              title: "TS0042"
-              message: "Левая кнопка, одиночное нажатие. command={{ command }}"
-          - service: system_log.write
-            data:
-              level: warning
-              message: "TS0042: left single, command={{ command }}, data={{ trigger.event.data | tojson }}"
-          - choose: []
-          - sequence: !input left_single_action
+        sequence: !input left_single_action
 
       - conditions:
           - condition: template
             value_template: "{{ endpoint_id == 1 and press_type == 'double' }}"
-        sequence:
-          - service: persistent_notification.create
-            data:
-              title: "TS0042"
-              message: "Левая кнопка, двойное нажатие. command={{ command }}"
-          - service: system_log.write
-            data:
-              level: warning
-              message: "TS0042: left double, command={{ command }}, data={{ trigger.event.data | tojson }}"
-          - choose: []
-          - sequence: !input left_double_action
+        sequence: !input left_double_action
 
       - conditions:
           - condition: template
             value_template: "{{ endpoint_id == 1 and press_type == 'long' }}"
+        sequence: !input left_long_action
+
+      # Перебор сцен левой кнопкой
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ endpoint_id == 1
+                 and left_cycle_enabled
+                 and press_type == left_cycle_press_type
+                 and (left_cycle_scenes.entity_id | count) > 0
+                 and left_cycle_index_helper is not none }}
         sequence:
-          - service: persistent_notification.create
+          - variables:
+              scenes_list: "{{ left_cycle_scenes.entity_id }}"
+              max_index: "{{ (scenes_list | count) - 1 }}"
+              current_index: "{{ states(left_cycle_index_helper) | int(0) }}"
+              next_index: >
+                {% if current_index >= max_index %}
+                  0
+                {% else %}
+                  {{ current_index + 1 }}
+                {% endif %}
+          - service: scene.turn_on
+            target:
+              entity_id: "{{ scenes_list[next_index | int] }}"
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ left_cycle_index_helper }}"
             data:
-              title: "TS0042"
-              message: "Левая кнопка, долгое нажатие. command={{ command }}"
-          - service: system_log.write
-            data:
-              level: warning
-              message: "TS0042: left long, command={{ command }}, data={{ trigger.event.data | tojson }}"
-          - choose: []
-          - sequence: !input left_long_action
+              value: "{{ next_index }}"
 
-      # ---------- Правая кнопка (endpoint_id = 2) ----------
+      # ---------- ПРАВАЯ КНОПКА (endpoint_id = 2) ----------
 
+      # Простые действия
       - conditions:
           - condition: template
             value_template: "{{ endpoint_id == 2 and press_type == 'single' }}"
-        sequence:
-          - service: persistent_notification.create
-            data:
-              title: "TS0042"
-              message: "Правая кнопка, одиночное нажатие. command={{ command }}"
-          - service: system_log.write
-            data:
-              level: warning
-              message: "TS0042: right single, command={{ command }}, data={{ trigger.event.data | tojson }}"
-          - choose: []
-          - sequence: !input right_single_action
+        sequence: !input right_single_action
 
       - conditions:
           - condition: template
             value_template: "{{ endpoint_id == 2 and press_type == 'double' }}"
-        sequence:
-          - service: persistent_notification.create
-            data:
-              title: "TS0042"
-              message: "Правая кнопка, двойное нажатие. command={{ command }}"
-          - service: system_log.write
-            data:
-              level: warning
-              message: "TS0042: right double, command={{ command }}, data={{ trigger.event.data | tojson }}"
-          - choose: []
-          - sequence: !input right_double_action
+        sequence: !input right_double_action
 
       - conditions:
           - condition: template
             value_template: "{{ endpoint_id == 2 and press_type == 'long' }}"
+        sequence: !input right_long_action
+
+      # Перебор сцен правой кнопкой
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ endpoint_id == 2
+                 and right_cycle_enabled
+                 and press_type == right_cycle_press_type
+                 and (right_cycle_scenes.entity_id | count) > 0
+                 and right_cycle_index_helper is not none }}
         sequence:
-          - service: persistent_notification.create
+          - variables:
+              scenes_list: "{{ right_cycle_scenes.entity_id }}"
+              max_index: "{{ (scenes_list | count) - 1 }}"
+              current_index: "{{ states(right_cycle_index_helper) | int(0) }}"
+              next_index: >
+                {% if current_index >= max_index %}
+                  0
+                {% else %}
+                  {{ current_index + 1 }}
+                {% endif %}
+          - service: scene.turn_on
+            target:
+              entity_id: "{{ scenes_list[next_index | int] }}"
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ right_cycle_index_helper }}"
             data:
-              title: "TS0042"
-              message: "Правая кнопка, долгое нажатие. command={{ command }}"
-          - service: system_log.write
-            data:
-              level: warning
-              message: "TS0042: right long, command={{ command }}, data={{ trigger.event.data | tojson }}"
-          - choose: []
-          - sequence: !input right_long_action
+              value: "{{ next_index }}"
