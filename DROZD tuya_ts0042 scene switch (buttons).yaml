@@ -1,0 +1,115 @@
+blueprint:
+  name: "Tuya TS0042 (ZHA) – простые действия по кнопкам"
+  description: >
+    Позволяет задать произвольные действия на
+      - левую кнопку (single/double/long)
+      - правую кнопку (single/double/long)
+
+  domain: automation
+
+  input:
+    zha_device:
+      name: "2 gang Scene Switch Tuya/MOES TS0042"
+      description: "Выберите устройство"
+      selector:
+        device:
+          integration: zha
+
+    # ---- ЛЕВАЯ КНОПКА ----
+    left_single_action:
+      name: "Левая кнопка – одиночное нажатие"
+      default: []
+      selector:
+        action: {}
+
+    left_double_action:
+      name: "Левая кнопка – двойное нажатие"
+      default: []
+      selector:
+        action: {}
+
+    left_long_action:
+      name: "Левая кнопка – долгое нажатие"
+      default: []
+      selector:
+        action: {}
+
+    # ---- ПРАВАЯ КНОПКА ----
+    right_single_action:
+      name: "Правая кнопка – одиночное нажатие"
+      default: []
+      selector:
+        action: {}
+
+    right_double_action:
+      name: "Правая кнопка – двойное нажатие"
+      default: []
+      selector:
+        action: {}
+
+    right_long_action:
+      name: "Правая кнопка – долгое нажатие"
+      default: []
+      selector:
+        action: {}
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  zha_device: !input zha_device
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input zha_device
+
+action:
+  - variables:
+      endpoint_id: "{{ trigger.event.data.endpoint_id | int }}"
+      command: "{{ trigger.event.data.command }}"
+      press_type: >
+        {% if command == 'remote_button_short_press' %}
+          single
+        {% elif command == 'remote_button_double_press' %}
+          double
+        {% elif command == 'remote_button_long_press' %}
+          long
+        {% else %}
+          unknown
+        {% endif %}
+
+  - choose:
+
+      # ===== ЛЕВАЯ КНОПКА =====
+      - conditions:
+          - condition: template
+            value_template: "{{ endpoint_id == 1 and press_type == 'single' }}"
+        sequence: !input left_single_action
+
+      - conditions:
+          - condition: template
+            value_template: "{{ endpoint_id == 1 and press_type == 'double' }}"
+        sequence: !input left_double_action
+
+      - conditions:
+          - condition: template
+            value_template: "{{ endpoint_id == 1 and press_type == 'long' }}"
+        sequence: !input left_long_action
+
+      # ===== ПРАВАЯ КНОПКА =====
+      - conditions:
+          - condition: template
+            value_template: "{{ endpoint_id == 2 and press_type == 'single' }}"
+        sequence: !input right_single_action
+
+      - conditions:
+          - condition: template
+            value_template: "{{ endpoint_id == 2 and press_type == 'double' }}"
+        sequence: !input right_double_action
+
+      - conditions:
+          - condition: template
+            value_template: "{{ endpoint_id == 2 and press_type == 'long' }}"
+        sequence: !input right_long_action
