@@ -8,7 +8,7 @@ blueprint:
   input:
     zha_device:
       name: "Tuya/MOES 2gang Scene Switch (TS0042)"
-      description:
+      description: "Выберите устройство"
       selector:
         device:
           integration: zha
