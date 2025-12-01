@@ -1,5 +1,5 @@
 blueprint:
-  name: "Tuya TS0042 (ZHA) – простые действия по кнопкам"
+  name: "DROZD Tuya/MOES TS0042 (ZHA) – простые действия по кнопкам"
   description: >
     Позволяет задать произвольные действия на
       - левую кнопку (single/double/long)
