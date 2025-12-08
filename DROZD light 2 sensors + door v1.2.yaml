@@ -511,12 +511,31 @@ action:
             id: motion_on
           - condition: template
             value_template: "{{ room_occupied_flag_defined }}"
-          - condition: template
-            value_template: "{{ room_free }}"
         sequence:
           - service: input_boolean.turn_on
             target:
               entity_id: "{{ room_occupied_flag }}"
+      # 1.2) Включение света по открытию двери, если в комнате никого нет
+      - conditions:
+          - condition: trigger
+            id: door_opened
+          - condition: template
+            value_template: "{{ door_sensor_defined }}"
+          - condition: template
+            value_template: >
+              {{ not room_occupied_flag_defined or room_free }}
+        sequence:
+          - service: homeassistant.turn_on
+            target: !input target_entities
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ room_occupied_flag_defined }}"
+                sequence:
+                  - service: input_boolean.turn_on
+                    target:
+                      entity_id: "{{ room_occupied_flag }}"
+            default: []
 
       # 2) Авто-выключение по таймауту — ТОЛЬКО по одному датчику
       - conditions:
