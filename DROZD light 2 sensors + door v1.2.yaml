@@ -565,46 +565,18 @@ action:
           - service: homeassistant.turn_off
             target: !input target_entities
 
-      # 2.1) Дверь открылась, в комнате кто-то был -> ждём окончания движения и гасим
+      # 2.1) Дверь открылась -> считаем, что комнату можно освободить
       - conditions:
           - condition: trigger
             id: door_opened
           - condition: template
             value_template: "{{ door_sensor_defined }}"
           - condition: template
-            value_template: "{{ room_occupied }}"
+            value_template: "{{ room_occupied_flag_defined }}"
         sequence:
-          # Ждём, пока основной датчик для выключения покажет отсутствие движения
-          - wait_for_trigger:
-              - platform: state
-                entity_id: !input single_off_sensor
-                to: "off"
-            timeout:
-              minutes: 30
-            continue_on_timeout: false
-
-          # Небольшая задержка на "доворачивание" и выход
-          - delay:
-              seconds: 2
-
-          # Проверяем, что дверь всё ещё открыта
-          - condition: template
-            value_template: "{{ door_is_open }}"
-
-          # Выключаем свет
-          - service: homeassistant.turn_off
-            target: !input target_entities
-
-          # Сбрасываем флаг занятости, если он задан
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ room_occupied_flag_defined }}"
-                sequence:
-                  - service: input_boolean.turn_off
-                    target:
-                      entity_id: "{{ room_occupied_flag }}"
-            default: []
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ room_occupied_flag }}"
 
       # 3) Ручное включение
       - conditions:
