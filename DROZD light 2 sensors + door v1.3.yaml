@@ -1,5 +1,5 @@
 blueprint:
-  name: "DROZD light 2 sensors + door v1.2"
+  name: "DROZD light 2 sensors + door v1.3"
   description: >
     Умное освещение на базе двух типов датчиков — движения и присутствия,
     с дополнительным учётом датчика двери и флага занятости комнаты
@@ -97,7 +97,18 @@ blueprint:
         entity:
           domain: input_boolean
           multiple: false
-
+          
+    room_occupied_reset_timeout:
+      name: "Таймаут сброса занятости при тишине (сек)"
+      description: "Через сколько секунд после отсутствия движения считать, что туалет свободен, если дверь не закрыта."
+      default: 120
+      selector:
+        number:
+          min: 10
+          max: 3600
+          unit_of_measurement: seconds
+          mode: box
+          
     scene_apply_delay:
       name: "Время ожидания перед применением сцены (сек)"
       description: "Сколько ждать между включением света и применением сцены."
@@ -280,7 +291,8 @@ variables:
   # Дверь и занятость
   door_sensor_defined: "{{ (door_sensor | string) not in ['', 'none', 'unknown'] }}"
   room_occupied_flag_defined: "{{ (room_occupied_flag | string) not in ['', 'none', 'unknown'] }}"
-
+  room_occupied_reset_timeout: !input room_occupied_reset_timeout
+  
   # Считаем, что binary_sensor двери: on = открыта, off = закрыта
   door_is_open: "{{ door_sensor_defined and is_state(door_sensor, 'on') }}"
   door_is_closed: "{{ door_sensor_defined and is_state(door_sensor, 'off') }}"
@@ -564,7 +576,7 @@ action:
             value_template: "{{ single_off_sensor_is_off }}"
           - service: homeassistant.turn_off
             target: !input target_entities
-
+      
       # 2.1) Дверь открылась -> считаем, что комнату можно освободить
       - conditions:
           - condition: trigger
@@ -574,6 +586,30 @@ action:
           - condition: template
             value_template: "{{ room_occupied_flag_defined }}"
         sequence:
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ room_occupied_flag }}"
+
+      # 2.2) Сброс занятости по тишине: нет движения и дверь не закрыта "в коробку"
+      - conditions:
+          - condition: trigger
+            id: motion_off
+          - condition: template
+            value_template: "{{ room_occupied_flag_defined }}"
+        sequence:
+          # Ждём заданный таймаут "тишины"
+          - delay:
+              seconds: "{{ room_occupied_reset_timeout | int }}"
+
+          # Проверяем, что по основному датчику до сих пор нет движения
+          - condition: template
+            value_template: "{{ single_off_sensor_is_off }}"
+
+          # И дверь не закрыта "герметично", иначе не трогаем (там может кто-то сидеть спокойно)
+          - condition: template
+            value_template: "{{ not door_sensor_defined or door_is_open }}"
+
+          # Сбрасываем флаг занятости
           - service: input_boolean.turn_off
             target:
               entity_id: "{{ room_occupied_flag }}"
