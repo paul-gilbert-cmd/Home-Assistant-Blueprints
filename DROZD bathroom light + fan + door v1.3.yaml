@@ -1,0 +1,666 @@
+blueprint:
+  name: "DROZD bathroom light + fan + door v1.3"
+  description: >
+    Ванная: свет по двум датчикам движения/присутствия + мягкий учёт двери
+    и управление вытяжкой по влажности.
+
+    Свет:
+    - Датчики движения/присутствия.
+    - Опциональный датчик двери: если дверь закрыта, таймаут выключения можно увеличить.
+    - Дневной/ночной режим с разными таймаутами.
+    - Поддержка дневной и ночной сцен при первом включении.
+    - Раздельные таймауты для авто-включения и ручного включения.
+
+    Вытяжка:
+    - Управление по порогу влажности.
+    - Включение при превышении порога.
+    - Выключение при падении ниже порога отключения (гистерезис).
+    - Ручное управление: если пользователь включил/выключил вентилятор вручную,
+      автомат не "спорит" до нового цикла изменения влажности (перехода через пороги).
+
+  domain: automation
+
+  input:
+    # --- СВЕТ / ПРИСУТСТВИЕ ---
+
+    motion_sensors:
+      name: "Датчики движения/присутствия"
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
+
+    single_off_sensor:
+      name: "Датчик, по которому проверяется отсутствие движения для выключения"
+      description: "Свет будет выключаться по таймауту только если этот датчик в состоянии off"
+      selector:
+        entity:
+          domain: binary_sensor
+
+    door_sensor:
+      name: "Датчик двери (опционально)"
+      description: "Если указан, при закрытой двери можно использовать увеличенный таймаут выключения"
+      default: ""
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: false
+
+    target_entities:
+      name: "Целевые свет/выключатели"
+      selector:
+        target:
+          entity:
+            domain:
+              - light
+              - switch
+
+    manual_entities:
+      name: "Сущности для отслеживания ручного включения света"
+      selector:
+        entity:
+          domain:
+            - light
+            - switch
+          multiple: true
+
+    night_scene_pending_flag:
+      name: "Флаг ожидания ночной сцены (input_boolean)"
+      selector:
+        entity:
+          domain: input_boolean
+
+    day_scene_pending_flag:
+      name: "Флаг ожидания дневной сцены (input_boolean)"
+      selector:
+        entity:
+          domain: input_boolean
+
+    scene_apply_delay:
+      name: "Время ожидания перед применением сцены (сек)"
+      default: 2
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: seconds
+          mode: box
+
+    day_scene:
+      name: "Дневная сцена (только при ПЕРВОМ включении)"
+      selector:
+        entity:
+          domain: scene
+
+    night_scene:
+      name: "Ночная сцена (только при ПЕРВОМ включении)"
+      selector:
+        entity:
+          domain: scene
+
+    apply_scene_on_mode_change:
+      name: "Применять сцену сразу при переходе режима"
+      default: true
+      selector:
+        boolean: {}
+
+    day_timeout_seconds:
+      name: "Базовый таймаут выключения света днём (сек)"
+      default: 60
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+    night_timeout_seconds:
+      name: "Базовый таймаут выключения света ночью (сек)"
+      default: 120
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+    extra_timeout_closed_door_factor:
+      name: "Множитель таймаута при закрытой двери"
+      description: "Во сколько раз увеличить таймаут, если дверь закрыта (1 = не менять)"
+      default: 2.0
+      selector:
+        number:
+          min: 1.0
+          max: 5.0
+          step: 0.5
+          mode: slider
+
+    # Сенсоры времени смены день/ночь (опционально)
+    sun_night_start_sensor:
+      name: "Сенсор начала ночи (опционально)"
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+          multiple: false
+
+    sun_night_end_sensor:
+      name: "Сенсор начала дня (опционально)"
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+          multiple: false
+
+    night_start_time:
+      name: "Время начала ночного режима"
+      default: "23:30:00"
+      selector:
+        time: {}
+
+    night_end_time:
+      name: "Время окончания ночного режима"
+      default: "07:00:00"
+      selector:
+        time: {}
+
+    night_mode_source:
+      name: "Источник смены день/ночь"
+      default: "fixed_time"
+      selector:
+        select:
+          options:
+            - label: "Сенсоры солнца"
+              value: "sun_sensors"
+            - label: "Фиксированное время"
+              value: "fixed_time"
+            - label: "И сенсоры, и время"
+              value: "both"
+          mode: dropdown
+
+    enable_day_auto_on:
+      name: "Авто-включение света днём"
+      default: true
+      selector:
+        boolean: {}
+
+    enable_day_auto_off:
+      name: "Авто-выключение света днём"
+      default: true
+      selector:
+        boolean: {}
+
+    enable_night_auto_on:
+      name: "Авто-включение света ночью"
+      default: true
+      selector:
+        boolean: {}
+
+    enable_night_auto_off:
+      name: "Авто-выключение света ночью"
+      default: true
+      selector:
+        boolean: {}
+
+    manual_on_auto_off_enabled:
+      name: "Авто-выключение ручного включения света"
+      default: true
+      selector:
+        boolean: {}
+
+    manual_on_day_timeout_seconds:
+      name: "Таймаут ручного включения света днём (сек)"
+      default: 1200
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+    manual_on_night_timeout_seconds:
+      name: "Таймаут ручного включения света ночью (сек)"
+      default: 600
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+
+    # --- ВЫТЯЖКА / ВЛАЖНОСТЬ ---
+
+    fan_entity:
+      name: "Вытяжка (выключатель/вентилятор)"
+      selector:
+        entity:
+          domain:
+            - switch
+            - fan
+
+    humidity_sensor:
+      name: "Датчик влажности"
+      selector:
+        entity:
+          domain:
+            - sensor
+
+    humidity_on_threshold:
+      name: "Порог включения по влажности (%)"
+      default: 65
+      selector:
+        number:
+          min: 30
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+
+    humidity_off_threshold:
+      name: "Порог выключения по влажности (%)"
+      default: 55
+      selector:
+        number:
+          min: 20
+          max: 95
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+
+    fan_min_runtime:
+      name: "Минимальное время работы вытяжки после авто-включения (сек)"
+      default: 300
+      selector:
+        number:
+          min: 0
+          max: 7200
+          unit_of_measurement: seconds
+          mode: box
+
+variables:
+  motion_sensors: !input motion_sensors
+  single_off_sensor: !input single_off_sensor
+  door_sensor: !input door_sensor
+  target_entities: !input target_entities
+  manual_entities: !input manual_entities
+
+  night_flag: !input night_scene_pending_flag
+  day_flag: !input day_scene_pending_flag
+
+  scene_apply_delay: !input scene_apply_delay
+
+  day_scene: !input day_scene
+  night_scene: !input night_scene
+  apply_scene_on_mode_change: !input apply_scene_on_mode_change
+
+  day_timeout_seconds: !input day_timeout_seconds
+  night_timeout_seconds: !input night_timeout_seconds
+  manual_on_day_timeout_seconds: !input manual_on_day_timeout_seconds
+  manual_on_night_timeout_seconds: !input manual_on_night_timeout_seconds
+
+  sun_night_start_sensor: !input sun_night_start_sensor
+  sun_night_end_sensor: !input sun_night_end_sensor
+
+  night_mode_source: !input night_mode_source
+
+  enable_day_auto_on: !input enable_day_auto_on
+  enable_day_auto_off: !input enable_day_auto_off
+  enable_night_auto_on: !input enable_night_auto_on
+  enable_night_auto_off: !input enable_night_auto_off
+  manual_on_auto_off_enabled: !input manual_on_auto_off_enabled
+
+  extra_timeout_closed_door_factor: !input extra_timeout_closed_door_factor
+
+  # Вытяжка
+  fan_entity: !input fan_entity
+  humidity_sensor: !input humidity_sensor
+  humidity_on_threshold: !input humidity_on_threshold
+  humidity_off_threshold: !input humidity_off_threshold
+  fan_min_runtime: !input fan_min_runtime
+
+  # Дверь (опционально). ВАЖНО: проверь, как даёт состояние твой датчик двери.
+  # Здесь считаем: on = дверь ОТКРЫТА, off = ЗАКРЫТА.
+  door_sensor_defined: "{{ (door_sensor | string) not in ['', 'none', 'unknown'] }}"
+  door_is_open: "{{ door_sensor_defined and is_state(door_sensor, 'on') }}"
+  door_is_closed: "{{ door_sensor_defined and is_state(door_sensor, 'off') }}"
+
+  # Режим день/ночь
+  current_time: "{{ now().strftime('%H:%M:%S') }}"
+  night_start_time_var: !input night_start_time
+  night_end_time_var: !input night_end_time
+
+  is_night_by_time: >-
+    {% if night_mode_source in ['fixed_time', 'both'] %}
+      {% if night_start_time_var < night_end_time_var %}
+        {{ current_time >= night_start_time_var or current_time < night_end_time_var }}
+      {% else %}
+        {{ current_time >= night_start_time_var or current_time < night_end_time_var }}
+      {% endif %}
+    {% else %}
+      false
+    {% endif %}
+
+  is_night: "{{ states(night_flag) == 'on' or is_night_by_time }}"
+  is_day: "{{ not is_night }}"
+
+  base_motion_timeout_seconds: "{{ night_timeout_seconds if is_night else day_timeout_seconds }}"
+  manual_timeout_seconds: "{{ manual_on_night_timeout_seconds if is_night else manual_on_day_timeout_seconds }}"
+  allow_auto_on: "{{ enable_night_auto_on if is_night else enable_day_auto_on }}"
+  allow_auto_off: "{{ enable_night_auto_off if is_night else enable_day_auto_off }}"
+
+  block_night_auto_off: "{{ is_night and not enable_night_auto_off }}"
+
+  single_off_sensor_is_off: "{{ is_state(single_off_sensor, 'off') }}"
+
+  use_sun_sensors: "{{ night_mode_source in ['sun_sensors', 'both'] }}"
+  use_fixed_time: "{{ night_mode_source in ['fixed_time', 'both'] }}"
+
+  has_sun_start_sensor: "{{ (sun_night_start_sensor | string) not in ['', 'none', 'unknown'] }}"
+  has_sun_end_sensor: "{{ (sun_night_end_sensor | string) not in ['', 'none', 'unknown'] }}"
+
+  # Итоговый таймаут для авто-выключения света.
+  # Если дверь не указана или открыта — используем базовый.
+  # Если дверь закрыта — увеличиваем таймаут на заданный множитель.
+  effective_motion_timeout_seconds: >-
+    {% if door_sensor_defined and door_is_closed %}
+      {{ (base_motion_timeout_seconds | float(0)) * (extra_timeout_closed_door_factor | float(1)) }}
+    {% else %}
+      {{ base_motion_timeout_seconds }}
+    {% endif %}
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  # Свет
+  - id: motion_on
+    platform: state
+    entity_id: !input motion_sensors
+    to: 'on'
+
+  - id: motion_off
+    platform: state
+    entity_id: !input motion_sensors
+    to: 'off'
+
+  - id: night_start_by_sensor
+    platform: time
+    at: "{{ states(sun_night_start_sensor) }}"
+
+  - id: night_end_by_sensor
+    platform: time
+    at: "{{ states(sun_night_end_sensor) }}"
+
+  - id: night_start_by_time
+    platform: time
+    at: !input night_start_time
+
+  - id: night_end_by_time
+    platform: time
+    at: !input night_end_time
+
+  - id: manual_on
+    platform: state
+    entity_id: !input manual_entities
+    to: 'on'
+
+  # Вытяжка
+  - id: humidity_changed
+    platform: state
+    entity_id: !input humidity_sensor
+
+  - id: fan_manual_changed
+    platform: state
+    entity_id: !input fan_entity
+
+condition: []
+
+action:
+  - choose:
+
+      # --- РЕЖИМ ДЕНЬ/НОЧЬ ---
+
+      - conditions:
+          - condition: trigger
+            id: night_start_by_sensor
+          - condition: template
+            value_template: "{{ use_sun_sensors and has_sun_start_sensor }}"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ night_flag }}"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ day_flag }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ apply_scene_on_mode_change and night_scene is not none }}"
+                sequence:
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ night_scene }}"
+
+      - conditions:
+          - condition: trigger
+            id: night_start_by_time
+          - condition: template
+            value_template: "{{ use_fixed_time }}"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ night_flag }}"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ day_flag }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ apply_scene_on_mode_change and night_scene is not none }}"
+                sequence:
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ night_scene }}"
+
+      - conditions:
+          - condition: trigger
+            id: night_end_by_sensor
+          - condition: template
+            value_template: "{{ use_sun_sensors and has_sun_end_sensor }}"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ day_flag }}"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ night_flag }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ apply_scene_on_mode_change and day_scene is not none }}"
+                sequence:
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ day_scene }}"
+
+      - conditions:
+          - condition: trigger
+            id: night_end_by_time
+          - condition: template
+            value_template: "{{ use_fixed_time }}"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ day_flag }}"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ night_flag }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ apply_scene_on_mode_change and day_scene is not none }}"
+                sequence:
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ day_scene }}"
+
+      # --- СВЕТ ---
+
+      # 1) Авто-включение по движению
+      - conditions:
+          - condition: trigger
+            id: motion_on
+          - condition: template
+            value_template: "{{ allow_auto_on }}"
+        sequence:
+          - service: homeassistant.turn_on
+            target: !input target_entities
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_night and night_scene is not none and states(night_flag) == 'on' }}"
+                sequence:
+                  - delay:
+                      seconds: "{{ scene_apply_delay | int }}"
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ night_scene }}"
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: "{{ night_flag }}"
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_day and day_scene is not none and states(day_flag) == 'on' }}"
+                sequence:
+                  - delay:
+                      seconds: "{{ scene_apply_delay | int }}"
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ day_scene }}"
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: "{{ day_flag }}"
+            default: []
+
+      # 2) Авто-выключение по таймауту (по основному датчику)
+      - conditions:
+          - condition: trigger
+            id: motion_off
+          - condition: template
+            value_template: "{{ allow_auto_off }}"
+          - condition: template
+            value_template: "{{ single_off_sensor_is_off }}"
+          - condition: template
+            value_template: "{{ not block_night_auto_off }}"
+          - condition: template
+            value_template: "{{ manual_on_auto_off_enabled }}"
+        sequence:
+          - delay:
+              seconds: "{{ effective_motion_timeout_seconds | float(0) | round(0) }}"
+          - condition: template
+            value_template: "{{ single_off_sensor_is_off }}"
+          - service: homeassistant.turn_off
+            target: !input target_entities
+
+      # 3) Ручное включение света с таймером
+      - conditions:
+          - condition: trigger
+            id: manual_on
+          - condition: template
+            value_template: "{{ manual_on_auto_off_enabled }}"
+          - condition: template
+            value_template: "{{ manual_entities | count > 0 }}"
+          - condition: template
+            value_template: >
+              {{ (trigger.to_state.context and trigger.to_state.context.user_id) is not none }}
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_night and night_scene is not none and states(night_flag) == 'on' }}"
+                sequence:
+                  - delay:
+                      seconds: "{{ scene_apply_delay | int }}"
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ night_scene }}"
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: "{{ night_flag }}"
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_day and day_scene is not none and states(day_flag) == 'on' }}"
+                sequence:
+                  - delay:
+                      seconds: "{{ scene_apply_delay | int }}"
+                  - service: scene.turn_on
+                    target:
+                      entity_id: "{{ day_scene }}"
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: "{{ day_flag }}"
+            default: []
+
+          # Ждём окончания движения по основному датчику
+          - wait_for_trigger:
+              - platform: state
+                entity_id: !input single_off_sensor
+                to: "off"
+            timeout:
+              hours: 24
+            continue_on_timeout: false
+
+          # Отсчёт таймаута после прекращения движения (для ручного включения двери не учитываем)
+          - delay:
+              seconds: "{{ manual_timeout_seconds | int }}"
+
+          # Если движения по-прежнему нет — выключаем свет
+          - condition: template
+            value_template: "{{ single_off_sensor_is_off }}"
+          - service: homeassistant.turn_off
+            target: !input target_entities
+
+      # --- ВЫТЯЖКА / ВЛАЖНОСТЬ ---
+
+      # 4) Автоматическое управление вытяжкой по влажности
+      - conditions:
+          - condition: trigger
+            id: humidity_changed
+        sequence:
+          - variables:
+              current_humidity: "{{ states(humidity_sensor) | float(0) }}"
+              fan_is_on: "{{ is_state(fan_entity, 'on') }}"
+          # Авто-включение: при переходе выше порога и вентилятор был выключен
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ current_humidity >= (humidity_on_threshold | float(0)) and not fan_is_on }}
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: "{{ fan_entity }}"
+                  - delay:
+                      seconds: "{{ fan_min_runtime | int }}"
+            default: []
+          # Авто-выключение: при падении ниже порога и вентилятор включен
+          - variables:
+              fan_is_on_after: "{{ is_state(fan_entity, 'on') }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ current_humidity <= (humidity_off_threshold | float(0)) and fan_is_on_after }}
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: "{{ fan_entity }}"
+            default: []
+
+      # 5) Ручное изменение состояния вытяжки
+      - conditions:
+          - condition: trigger
+            id: fan_manual_changed
+        sequence: []
+
+    default: []
