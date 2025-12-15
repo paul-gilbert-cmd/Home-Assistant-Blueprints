@@ -1,5 +1,5 @@
 blueprint:
-  name: "DROZD light 2 sensors v1.1"
+  name: "DROZD light 2 sensors v1.2"
   description: >
     Умное освещение на базе двух типов датчиков — движения и присутствия.
 
@@ -493,6 +493,7 @@ action:
             value_template: >
               {{ (trigger.to_state.context and trigger.to_state.context.user_id) is not none }}
         sequence:
+          # 3.0 Применяем нужную сцену при первом ручном включении в текущем режиме
           - choose:
               - conditions:
                   - condition: template
@@ -519,12 +520,6 @@ action:
                     target:
                       entity_id: "{{ day_flag }}"
             default: []
-          - delay:
-              seconds: "{{ manual_timeout_seconds | int }}"
-          - condition: template
-            value_template: "{{ single_off_sensor_is_off }}"
-          - service: homeassistant.turn_off
-            target: !input target_entities
 
           # 3.1 Ждём окончания движения/присутствия по основному датчику выключения
           - wait_for_trigger:
