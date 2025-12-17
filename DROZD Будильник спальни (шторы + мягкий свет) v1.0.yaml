@@ -1,41 +1,29 @@
 blueprint:
   name: "DROZD Будильник спальни (шторы + мягкий свет) v1.0"
   description: >
-    Будильник для спальни с буднями/выходными.
-    Один helper: input_boolean включения будильника.
-    Всё остальное (время, режим мягкий/быстрый, солнце/время для штор)
-    задаётся прямо в настройках автоматизации.
+    Будильник для спальни с раздельными настройками для будней и выходных.
 
   domain: automation
 
   input:
-    # --- Единственный helper ---
-    alarm_enabled:
-      name: Включен ли будильник (input_boolean)
-      description: >
-        Один переключатель, который включает/выключает весь будильник.
-      selector:
-        entity:
-          domain: input_boolean
-
     # --- Время будильника ---
-    weekday_time_str:
-      name: Время будильника (будни), HH:MM:SS
+    weekday_time:
+      name: Время будильника будни
       description: >
-        Время в формате 24ч HH:MM:SS, например 07:00:00.
+        понедельник–пятница
       default: "07:00:00"
       selector:
-        text:
+        time:
 
-    weekend_time_str:
-      name: Время будильника (выходные), HH:MM:SS
+    weekend_time:
+      name: Время будильника выходные
       description: >
-        Время в формате 24ч HH:MM:SS, например 09:00:00.
-      default: "09:00:00"
+        суббота–воскресенье
+      default: "09:30:00"
       selector:
-        text:
+        time:
 
-    # --- Выбор режима пробуждения ---
+    # --- Режим пробуждения ---
     weekday_soft_mode:
       name: Мягкое пробуждение в будни
       description: >
@@ -52,7 +40,7 @@ blueprint:
       selector:
         boolean:
 
-    # --- Свет и шторы ---
+    # --- Устройства ---
     bedroom_light:
       name: Свет в спальне
       description: >
@@ -64,7 +52,7 @@ blueprint:
     bedroom_cover:
       name: Шторы / жалюзи спальни
       description: >
-        Cover для подъёма/опускания штор.
+        Мотор для подъёма/опускания штор.
       selector:
         entity:
           domain: cover
@@ -83,7 +71,7 @@ blueprint:
     # --- Параметры мягкого пробуждения ---
     soft_start_brightness:
       name: Начальная яркость (мягкое пробуждение), %
-      default: 5
+      default: 15
       selector:
         number:
           min: 1
@@ -113,7 +101,7 @@ blueprint:
 
     soft_step_delay:
       name: Пауза между шагами (мягкое пробуждение), мин
-      default: 3
+      default: 2
       selector:
         number:
           min: 1
@@ -131,14 +119,13 @@ blueprint:
       selector:
         boolean:
 
-    blinds_fixed_time_str:
-      name: Время опускания штор (фиксированное), HH:MM:SS
+    blinds_fixed_time:
+      name: Время опускания штор (фиксированное)
       description: >
         Используется, если опция "опускать по солнцу" выключена.
-        Например 22:30:00.
-      default: "22:30:00"
+      default: "20:00:00"
       selector:
-        text:
+        time:
 
     blinds_sunset_offset:
       name: Оффсет от заката для опускания штор
@@ -154,10 +141,8 @@ mode: restart
 max_exceeded: silent
 
 variables:
-  v_alarm_enabled: !input alarm_enabled
-
-  v_weekday_time_str: !input weekday_time_str
-  v_weekend_time_str: !input weekend_time_str
+  v_weekday_time: !input weekday_time
+  v_weekend_time: !input weekend_time
 
   v_weekday_soft_mode: !input weekday_soft_mode
   v_weekend_soft_mode: !input weekend_soft_mode
@@ -172,24 +157,24 @@ variables:
   v_soft_step_delay: !input soft_step_delay
 
   v_close_blinds_use_sun: !input close_blinds_use_sun
-  v_blinds_fixed_time_str: !input blinds_fixed_time_str
+  v_blinds_fixed_time: !input blinds_fixed_time
   v_blinds_sunset_offset: !input blinds_sunset_offset
 
 trigger:
   # Будильник: будни
   - id: weekday_alarm
     platform: time
-    at: "{{ v_weekday_time_str }}"
+    at: "{{ v_weekday_time }}"
 
   # Будильник: выходные
   - id: weekend_alarm
     platform: time
-    at: "{{ v_weekend_time_str }}"
+    at: "{{ v_weekend_time }}"
 
   # Опускание штор по фиксированному времени
   - id: blinds_close_fixed
     platform: time
-    at: "{{ v_blinds_fixed_time_str }}"
+    at: "{{ v_blinds_fixed_time }}"
 
   # Опускание штор по солнцу
   - id: blinds_close_sun
@@ -207,9 +192,6 @@ action:
       - conditions:
           - condition: trigger
             id: weekday_alarm
-          - condition: state
-            entity_id: !input alarm_enabled
-            state: "on"
           - condition: time
             weekday:
               - mon
@@ -301,9 +283,6 @@ action:
       - conditions:
           - condition: trigger
             id: weekend_alarm
-          - condition: state
-            entity_id: !input alarm_enabled
-            state: "on"
           - condition: time
             weekday:
               - sat
