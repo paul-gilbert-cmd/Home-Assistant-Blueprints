@@ -12,35 +12,40 @@ blueprint:
     # --- Управление будильником ---
     alarm_enabled:
       name: Включен ли будильник
-      description: input_boolean, общий включатель будильника.
+      description: >
+        input_boolean — общий включатель будильника.
       selector:
         entity:
           domain: input_boolean
 
     weekday_mode:
       name: Режим пробуждения (будни)
-      description: input_select с вариантами сценариев пробуждения (минимум 2).
+      description: >
+        input_select с вариантами сценариев пробуждения (минимум 2).
       selector:
         entity:
           domain: input_select
 
     weekend_mode:
       name: Режим пробуждения (выходные)
-      description: input_select с вариантами сценариев пробуждения (минимум 2).
+      description: >
+        input_select с вариантами сценариев пробуждения (минимум 2).
       selector:
         entity:
           domain: input_select
 
     mode_soft_label:
       name: Название опции "мягкое пробуждение"
-      description: Значение из input_select, соответствующее мягкому пробуждению.
+      description: >
+        Значение из input_select, соответствующее мягкому пробуждению.
       default: "Мягкое пробуждение"
       selector:
         text:
 
     mode_fast_label:
       name: Название опции "быстрое пробуждение"
-      description: Значение из input_select, соответствующее быстрому пробуждению.
+      description: >
+        Значение из input_select, соответствующее быстрому пробуждению.
       default: "Быстрое пробуждение"
       selector:
         text:
@@ -48,14 +53,16 @@ blueprint:
     # --- Время будильника (строкой) ---
     weekday_time_str:
       name: Время будильника (будни), HH:MM:SS
-      description: Временной текст в формате 24ч: HH:MM:SS (например, 07:00:00).
+      description: >
+        Вводи время в формате 24ч HH:MM:SS, например 07:00:00.
       default: "07:00:00"
       selector:
         text:
 
     weekend_time_str:
       name: Время будильника (выходные), HH:MM:SS
-      description: Временной текст в формате 24ч: HH:MM:SS (например, 09:00:00).
+      description: >
+        Вводи время в формате 24ч HH:MM:SS, например 09:00:00.
       default: "09:00:00"
       selector:
         text:
@@ -75,7 +82,8 @@ blueprint:
 
     bedroom_switch:
       name: Дополнительный выключатель (опционально)
-      description: Например, бра или розетка. Можно не указывать.
+      description: >
+        Например, бра или розетка. Можно не указывать.
       default: ""
       selector:
         entity:
@@ -127,14 +135,16 @@ blueprint:
     # --- Вечер: опускание штор ---
     blinds_fixed_time_str:
       name: Время опускания штор (фиксированное), HH:MM:SS
-      description: Например, 22:30:00.
+      description: >
+        Например 22:30:00.
       default: "22:30:00"
       selector:
         text:
 
     blinds_sun_mode:
       name: Режим "шторы по солнцу"
-      description: input_boolean, если включен — закрываем шторы по закату+оффсет, а не по времени.
+      description: >
+        input_boolean. Если включен — закрываем шторы по закату плюс оффсет.
       selector:
         entity:
           domain: input_boolean
@@ -142,8 +152,9 @@ blueprint:
     blinds_sunset_offset:
       name: Оффсет от заката для опускания штор
       description: >
-        Формат HH:MM:SS. Отрицательное значение - до заката,
-        положительное - после (пример: "-00:20:00" - за 20 минут до заката).
+        Формат HH:MM:SS.
+        Отрицательное значение — до заката, положительное — после.
+        Пример: "-00:20:00" — за 20 минут до заката.
       default: "-00:20:00"
       selector:
         text:
