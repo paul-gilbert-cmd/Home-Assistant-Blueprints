@@ -126,8 +126,8 @@ blueprint:
       selector:
         entity:
           domain:
-            - switch
             - light
+            - switch
           multiple: false
 
     # --- Параметры мягкого пробуждения ---
