@@ -1,24 +1,44 @@
 blueprint:
   name: "DROZD Будильник спальни (шторы + мягкий свет) v1.0"
   description: >
-    Будильник для спальни с раздельными настройками для будней и выходных.
+    Умный будильник для спальни с поддержкой будней и выходных,
+  мягкого и быстрого сценария пробуждения, управлением светом и шторами,
+  а также автоматическим закрытием штор по закату или по фиксированному времени.
+
+  Возможности:
+  • Раздельные настройки для будней (пн–пт) и выходных (сб–вс).
+  • Два режима пробуждения: мягкий рассвет с постепенным увеличением яркости
+    или быстрое пробуждение с ярким светом.
+  • Отдельное управление освещением и шторами:
+      – можно включать только свет, только шторы или оба элемента вместе;
+      – гибкий порядок: сначала шторы, затем свет, или наоборот;
+      – настраиваемая задержка между открытием штор и включением света.
+  • Поддержка дополнительного реле/розетки:
+      – сначала подаётся питание (switch), затем управляется свет (light).
+  • Вечерний сценарий:
+      – автоматическое закрытие штор в заданное время,
+      – либо привязка к закату выбранного sun‑сенсора с настраиваемым оффсетом.
+
+  Идеально подходит для тех, кто хочет превратить пробуждение
+  в комфортный и предсказуемый ритуал с плавным светом и автоматическими шторами,
+  не перегружая систему лишними помощниками и сложными настройками.
 
   domain: automation
 
   input:
     # --- Время будильника ---
     weekday_time:
-      name: Время будильника будни
+      name: Время будильника (будни)
       description: >
-        понедельник–пятница
+        Время подъема в будни (понедельник–пятница).
       default: "07:00:00"
       selector:
         time:
 
     weekend_time:
-      name: Время будильника выходные
+      name: Время будильника (выходные)
       description: >
-        суббота–воскресенье
+        Время подъема в выходные (суббота–воскресенье).
       default: "09:30:00"
       selector:
         time:
@@ -40,9 +60,49 @@ blueprint:
       selector:
         boolean:
 
+    # --- Включаемость света и штор ---
+    use_light:
+      name: Управлять светом
+      description: >
+        Если выключено — все действия со светом будут пропущены.
+      default: true
+      selector:
+        boolean:
+
+    use_blinds:
+      name: Управлять шторами
+      description: >
+        Если выключено — все действия со шторами будут пропущены.
+      default: true
+      selector:
+        boolean:
+
+    # Порядок: сначала шторы, потом свет или наоборот
+    blinds_first:
+      name: Сначала шторы, потом свет
+      description: >
+        Если включено — сначала шторы, задержка, потом свет.
+        Если выключено — сначала свет, задержка, потом шторы.
+        Флажок влияет только если и свет, и шторы включены.
+      default: false
+      selector:
+        boolean:
+
+    delay_between_blinds_and_light:
+      name: Задержка между шторами и светом, сек
+      description: >
+        Применяется, когда используются и свет, и шторы.
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 600
+          unit_of_measurement: "сек"
+          mode: slider
+
     # --- Устройства ---
     bedroom_light:
-      name: Свет в спальне
+      name: Свет в спальне (лампа)
       description: >
         Диммируемая лампа/светильник.
       selector:
@@ -58,9 +118,10 @@ blueprint:
           domain: cover
 
     bedroom_switch:
-      name: Дополнительный выключатель (опционально)
+      name: Выключатель света (опционально)
       description: >
-        Например, бра или розетка. Можно оставить пустым.
+        Розетка/реле, которое подает питание на лампу.
+        Если указано, оно включается перед действиями со светом.
       default: ""
       selector:
         entity:
@@ -71,7 +132,7 @@ blueprint:
     # --- Параметры мягкого пробуждения ---
     soft_start_brightness:
       name: Начальная яркость (мягкое пробуждение), %
-      default: 15
+      default: 5
       selector:
         number:
           min: 1
@@ -101,7 +162,7 @@ blueprint:
 
     soft_step_delay:
       name: Пауза между шагами (мягкое пробуждение), мин
-      default: 2
+      default: 3
       selector:
         number:
           min: 1
@@ -113,7 +174,7 @@ blueprint:
     close_blinds_use_sun:
       name: Опускать шторы по солнцу
       description: >
-        Если включено — закрываем шторы по закату + оффсет.
+        Если включено — закрываем шторы по времени заката выбранного сенсора + оффсет.
         Если выключено — по фиксированному времени.
       default: true
       selector:
@@ -123,9 +184,18 @@ blueprint:
       name: Время опускания штор (фиксированное)
       description: >
         Используется, если опция "опускать по солнцу" выключена.
-      default: "20:00:00"
+      default: "22:30:00"
       selector:
         time:
+
+    sun_sensor:
+      name: Сенсор солнца
+      description: >
+        Любой сенсор с атрибутом next_setting (обычно sun.sun или кастомный).
+        Используется для вычисления времени заката.
+      selector:
+        entity:
+          domain: sun
 
     blinds_sunset_offset:
       name: Оффсет от заката для опускания штор
@@ -147,6 +217,11 @@ variables:
   v_weekday_soft_mode: !input weekday_soft_mode
   v_weekend_soft_mode: !input weekend_soft_mode
 
+  v_use_light: !input use_light
+  v_use_blinds: !input use_blinds
+  v_blinds_first: !input blinds_first
+  v_delay_between: !input delay_between_blinds_and_light
+
   v_light: !input bedroom_light
   v_cover: !input bedroom_cover
   v_switch: !input bedroom_switch
@@ -158,7 +233,18 @@ variables:
 
   v_close_blinds_use_sun: !input close_blinds_use_sun
   v_blinds_fixed_time: !input blinds_fixed_time
+  v_sun_sensor: !input sun_sensor
   v_blinds_sunset_offset: !input blinds_sunset_offset
+
+  # Время закрытия по солнцу, вычисляемое на сегодня
+  v_blinds_sun_time: >-
+    {% set setting = state_attr(v_sun_sensor, 'next_setting') %}
+    {% if setting is not none %}
+      {% set t = as_datetime(setting) + (strptime(v_blinds_sunset_offset, '%H:%M:%S') - strptime('00:00:00', '%H:%M:%S')) %}
+      {{ t.astimezone(now().tzinfo).strftime('%H:%M:%S') }}
+    {% else %}
+      22:00:00
+    {% endif %}
 
 trigger:
   # Будильник: будни
@@ -176,11 +262,10 @@ trigger:
     platform: time
     at: "{{ v_blinds_fixed_time }}"
 
-  # Опускание штор по солнцу
+  # Опускание штор по солнцу (через вычисленное время)
   - id: blinds_close_sun
-    platform: sun
-    event: sunset
-    offset: "{{ v_blinds_sunset_offset }}"
+    platform: time
+    at: "{{ v_blinds_sun_time }}"
 
 condition: []
 
@@ -208,47 +293,140 @@ action:
                 sequence:
                   - alias: "Мягкое пробуждение (будни)"
                     sequence:
-                      # 1. Низкая яркость
-                      - service: light.turn_on
-                        target:
-                          entity_id: "{{ v_light }}"
-                        data:
-                          brightness_pct: "{{ v_soft_start_brightness | int }}"
-                          transition: 30
-
-                      # 2. Пауза и средняя яркость
-                      - delay:
-                          minutes: "{{ v_soft_step_delay | int }}"
-                      - service: light.turn_on
-                        target:
-                          entity_id: "{{ v_light }}"
-                        data:
-                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
-                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
-
-                      # 3. Пауза и итоговая яркость
-                      - delay:
-                          minutes: "{{ v_soft_step_delay | int }}"
-                      - service: light.turn_on
-                        target:
-                          entity_id: "{{ v_light }}"
-                        data:
-                          brightness_pct: "{{ v_soft_final_brightness | int }}"
-                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
-
-                      # 4. Поднимаем шторы
-                      - service: cover.open_cover
-                        target:
-                          entity_id: "{{ v_cover }}"
-
-                      # 5. Опционально включаем выключатель
-                      - if:
-                          - condition: template
-                            value_template: "{{ v_switch != '' }}"
-                        then:
-                          - service: switch.turn_on
-                            target:
-                              entity_id: "{{ v_switch }}"
+                      # если и свет, и шторы включены
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ v_use_light and v_use_blinds }}"
+                            sequence:
+                              # вариант: сначала шторы, потом свет
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ v_blinds_first }}"
+                                    sequence:
+                                      # ШТОРЫ
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                                      # ЗАДЕРЖКА
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      # СВЕТ (мягкий)
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                          transition: 30
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                  # вариант: сначала свет, потом шторы
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ not v_blinds_first }}"
+                                    sequence:
+                                      # СВЕТ (мягкий)
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                          transition: 30
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      # ЗАДЕРЖКА
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      # ШТОРЫ
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                        default:
+                          # если только свет
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_light and not v_use_blinds }}"
+                            then:
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ v_switch != '' }}"
+                                then:
+                                  - service: switch.turn_on
+                                    target:
+                                      entity_id: "{{ v_switch }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                  transition: 30
+                              - delay:
+                                  minutes: "{{ v_soft_step_delay | int }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                  transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                              - delay:
+                                  minutes: "{{ v_soft_step_delay | int }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                  transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                          # если только шторы
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_blinds and not v_use_light }}"
+                            then:
+                              - service: cover.open_cover
+                                target:
+                                  entity_id: "{{ v_cover }}"
 
               # Быстрое пробуждение (будни)
               - conditions:
@@ -257,24 +435,88 @@ action:
                 sequence:
                   - alias: "Быстрое пробуждение (будни)"
                     sequence:
-                      - service: cover.open_cover
-                        target:
-                          entity_id: "{{ v_cover }}"
-
-                      - service: light.turn_on
-                        target:
-                          entity_id: "{{ v_light }}"
-                        data:
-                          brightness_pct: 80
-                          transition: 10
-
-                      - if:
-                          - condition: template
-                            value_template: "{{ v_switch != '' }}"
-                        then:
-                          - service: switch.turn_on
-                            target:
-                              entity_id: "{{ v_switch }}"
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ v_use_light and v_use_blinds }}"
+                            sequence:
+                              # сначала/потом по тому же флагу blinds_first
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ v_blinds_first }}"
+                                    sequence:
+                                      # ШТОРЫ
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      # СВЕТ (быстрый)
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: 80
+                                          transition: 10
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ not v_blinds_first }}"
+                                    sequence:
+                                      # СВЕТ (быстрый)
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: 80
+                                          transition: 10
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      # ШТОРЫ
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                        default:
+                          # только свет
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_light and not v_use_blinds }}"
+                            then:
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ v_switch != '' }}"
+                                then:
+                                  - service: switch.turn_on
+                                    target:
+                                      entity_id: "{{ v_switch }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: 80
+                                  transition: 10
+                          # только шторы
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_blinds and not v_use_light }}"
+                            then:
+                              - service: cover.open_cover
+                                target:
+                                  entity_id: "{{ v_cover }}"
             default: []
 
       # -------------------------
@@ -296,42 +538,129 @@ action:
                 sequence:
                   - alias: "Мягкое пробуждение (выходные)"
                     sequence:
-                      - service: light.turn_on
-                        target:
-                          entity_id: "{{ v_light }}"
-                        data:
-                          brightness_pct: "{{ v_soft_start_brightness | int }}"
-                          transition: 30
-
-                      - delay:
-                          minutes: "{{ v_soft_step_delay | int }}"
-                      - service: light.turn_on
-                        target:
-                          entity_id: "{{ v_light }}"
-                        data:
-                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
-                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
-
-                      - delay:
-                          minutes: "{{ v_soft_step_delay | int }}"
-                      - service: light.turn_on
-                        target:
-                          entity_id: "{{ v_light }}"
-                        data:
-                          brightness_pct: "{{ v_soft_final_brightness | int }}"
-                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
-
-                      - service: cover.open_cover
-                        target:
-                          entity_id: "{{ v_cover }}"
-
-                      - if:
-                          - condition: template
-                            value_template: "{{ v_switch != '' }}"
-                        then:
-                          - service: switch.turn_on
-                            target:
-                              entity_id: "{{ v_switch }}"
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ v_use_light and v_use_blinds }}"
+                            sequence:
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ v_blinds_first }}"
+                                    sequence:
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                          transition: 30
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ not v_blinds_first }}"
+                                    sequence:
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                          transition: 30
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                        default:
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_light and not v_use_blinds }}"
+                            then:
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ v_switch != '' }}"
+                                then:
+                                  - service: switch.turn_on
+                                    target:
+                                      entity_id: "{{ v_switch }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                  transition: 30
+                              - delay:
+                                  minutes: "{{ v_soft_step_delay | int }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                  transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                              - delay:
+                                  minutes: "{{ v_soft_step_delay | int }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                  transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_blinds and not v_use_light }}"
+                            then:
+                              - service: cover.open_cover
+                                target:
+                                  entity_id: "{{ v_cover }}"
 
               # Быстрое пробуждение (выходные)
               - conditions:
@@ -340,24 +669,81 @@ action:
                 sequence:
                   - alias: "Быстрое пробуждение (выходные)"
                     sequence:
-                      - service: cover.open_cover
-                        target:
-                          entity_id: "{{ v_cover }}"
-
-                      - service: light.turn_on
-                        target:
-                          entity_id: "{{ v_light }}"
-                        data:
-                          brightness_pct: 80
-                          transition: 10
-
-                      - if:
-                          - condition: template
-                            value_template: "{{ v_switch != '' }}"
-                        then:
-                          - service: switch.turn_on
-                            target:
-                              entity_id: "{{ v_switch }}"
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ v_use_light and v_use_blinds }}"
+                            sequence:
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ v_blinds_first }}"
+                                    sequence:
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: 80
+                                          transition: 10
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ not v_blinds_first }}"
+                                    sequence:
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: 80
+                                          transition: 10
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                        default:
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_light and not v_use_blinds }}"
+                            then:
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ v_switch != '' }}"
+                                then:
+                                  - service: switch.turn_on
+                                    target:
+                                      entity_id: "{{ v_switch }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: 80
+                                  transition: 10
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_blinds and not v_use_light }}"
+                            then:
+                              - service: cover.open_cover
+                                target:
+                                  entity_id: "{{ v_cover }}"
             default: []
 
       # -------------------------
@@ -369,9 +755,13 @@ action:
           - condition: template
             value_template: "{{ not v_close_blinds_use_sun }}"
         sequence:
-          - service: cover.close_cover
-            target:
-              entity_id: "{{ v_cover }}"
+          - if:
+              - condition: template
+                value_template: "{{ v_use_blinds }}"
+            then:
+              - service: cover.close_cover
+                target:
+                  entity_id: "{{ v_cover }}"
 
       # -------------------------
       # 4. Опускание штор по солнцу
@@ -382,7 +772,11 @@ action:
           - condition: template
             value_template: "{{ v_close_blinds_use_sun }}"
         sequence:
-          - service: cover.close_cover
-            target:
-              entity_id: "{{ v_cover }}"
+          - if:
+              - condition: template
+                value_template: "{{ v_use_blinds }}"
+            then:
+              - service: cover.close_cover
+                target:
+                  entity_id: "{{ v_cover }}"
     default: []
