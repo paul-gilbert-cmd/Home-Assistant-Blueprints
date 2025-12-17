@@ -1,60 +1,28 @@
 blueprint:
   name: "DROZD Будильник спальни (шторы + мягкий свет) v1.0"
   description: >
-    Будильник для спальни с разделением на будни и выходные.
-    Время будильника вводится текстом (HH:MM:SS) в настройках blueprint.
-    Управление режимом будильника и типом пробуждения — через input_boolean и input_select.
-    Опускание штор — по фиксированному времени или по солнцу (закат + оффсет).
+    Будильник для спальни с буднями/выходными.
+    Один helper: input_boolean включения будильника.
+    Всё остальное (время, режим мягкий/быстрый, солнце/время для штор)
+    задаётся прямо в настройках автоматизации.
 
   domain: automation
 
   input:
-    # --- Управление будильником ---
+    # --- Единственный helper ---
     alarm_enabled:
-      name: Включен ли будильник
+      name: Включен ли будильник (input_boolean)
       description: >
-        input_boolean — общий включатель будильника.
+        Один переключатель, который включает/выключает весь будильник.
       selector:
         entity:
           domain: input_boolean
 
-    weekday_mode:
-      name: Режим пробуждения (будни)
-      description: >
-        input_select с вариантами сценариев пробуждения (минимум 2).
-      selector:
-        entity:
-          domain: input_select
-
-    weekend_mode:
-      name: Режим пробуждения (выходные)
-      description: >
-        input_select с вариантами сценариев пробуждения (минимум 2).
-      selector:
-        entity:
-          domain: input_select
-
-    mode_soft_label:
-      name: Название опции "мягкое пробуждение"
-      description: >
-        Значение из input_select, соответствующее мягкому пробуждению.
-      default: "Мягкое пробуждение"
-      selector:
-        text:
-
-    mode_fast_label:
-      name: Название опции "быстрое пробуждение"
-      description: >
-        Значение из input_select, соответствующее быстрому пробуждению.
-      default: "Быстрое пробуждение"
-      selector:
-        text:
-
-    # --- Время будильника (строкой) ---
+    # --- Время будильника ---
     weekday_time_str:
       name: Время будильника (будни), HH:MM:SS
       description: >
-        Вводи время в формате 24ч HH:MM:SS, например 07:00:00.
+        Время в формате 24ч HH:MM:SS, например 07:00:00.
       default: "07:00:00"
       selector:
         text:
@@ -62,20 +30,41 @@ blueprint:
     weekend_time_str:
       name: Время будильника (выходные), HH:MM:SS
       description: >
-        Вводи время в формате 24ч HH:MM:SS, например 09:00:00.
+        Время в формате 24ч HH:MM:SS, например 09:00:00.
       default: "09:00:00"
       selector:
         text:
 
+    # --- Выбор режима пробуждения ---
+    weekday_soft_mode:
+      name: Мягкое пробуждение в будни
+      description: >
+        Если включено — в будни мягкое пробуждение, иначе быстрое.
+      default: true
+      selector:
+        boolean:
+
+    weekend_soft_mode:
+      name: Мягкое пробуждение в выходные
+      description: >
+        Если включено — в выходные мягкое пробуждение, иначе быстрое.
+      default: true
+      selector:
+        boolean:
+
     # --- Свет и шторы ---
     bedroom_light:
       name: Свет в спальне
+      description: >
+        Диммируемая лампа/светильник.
       selector:
         entity:
           domain: light
 
     bedroom_cover:
       name: Шторы / жалюзи спальни
+      description: >
+        Cover для подъёма/опускания штор.
       selector:
         entity:
           domain: cover
@@ -83,7 +72,7 @@ blueprint:
     bedroom_switch:
       name: Дополнительный выключатель (опционально)
       description: >
-        Например, бра или розетка. Можно не указывать.
+        Например, бра или розетка. Можно оставить пустым.
       default: ""
       selector:
         entity:
@@ -133,21 +122,23 @@ blueprint:
           mode: slider
 
     # --- Вечер: опускание штор ---
+    close_blinds_use_sun:
+      name: Опускать шторы по солнцу
+      description: >
+        Если включено — закрываем шторы по закату + оффсет.
+        Если выключено — по фиксированному времени.
+      default: true
+      selector:
+        boolean:
+
     blinds_fixed_time_str:
       name: Время опускания штор (фиксированное), HH:MM:SS
       description: >
+        Используется, если опция "опускать по солнцу" выключена.
         Например 22:30:00.
       default: "22:30:00"
       selector:
         text:
-
-    blinds_sun_mode:
-      name: Режим "шторы по солнцу"
-      description: >
-        input_boolean. Если включен — закрываем шторы по закату плюс оффсет.
-      selector:
-        entity:
-          domain: input_boolean
 
     blinds_sunset_offset:
       name: Оффсет от заката для опускания штор
@@ -164,14 +155,12 @@ max_exceeded: silent
 
 variables:
   v_alarm_enabled: !input alarm_enabled
-  v_weekday_mode: !input weekday_mode
-  v_weekend_mode: !input weekend_mode
-  v_mode_soft_label: !input mode_soft_label
-  v_mode_fast_label: !input mode_fast_label
 
   v_weekday_time_str: !input weekday_time_str
   v_weekend_time_str: !input weekend_time_str
-  v_blinds_fixed_time_str: !input blinds_fixed_time_str
+
+  v_weekday_soft_mode: !input weekday_soft_mode
+  v_weekend_soft_mode: !input weekend_soft_mode
 
   v_light: !input bedroom_light
   v_cover: !input bedroom_cover
@@ -182,11 +171,12 @@ variables:
   v_soft_final_brightness: !input soft_final_brightness
   v_soft_step_delay: !input soft_step_delay
 
-  v_blinds_sun_mode: !input blinds_sun_mode
+  v_close_blinds_use_sun: !input close_blinds_use_sun
+  v_blinds_fixed_time_str: !input blinds_fixed_time_str
   v_blinds_sunset_offset: !input blinds_sunset_offset
 
 trigger:
-  # Будильник: будни (по строке времени)
+  # Будильник: будни
   - id: weekday_alarm
     platform: time
     at: "{{ v_weekday_time_str }}"
@@ -201,7 +191,7 @@ trigger:
     platform: time
     at: "{{ v_blinds_fixed_time_str }}"
 
-  # Опускание штор по солнцу (закат + оффсет)
+  # Опускание штор по солнцу
   - id: blinds_close_sun
     platform: sun
     event: sunset
@@ -232,8 +222,7 @@ action:
               # Мягкое пробуждение (будни)
               - conditions:
                   - condition: template
-                    value_template: >
-                      {{ states(v_weekday_mode) == v_mode_soft_label }}
+                    value_template: "{{ v_weekday_soft_mode }}"
                 sequence:
                   - alias: "Мягкое пробуждение (будни)"
                     sequence:
@@ -282,8 +271,7 @@ action:
               # Быстрое пробуждение (будни)
               - conditions:
                   - condition: template
-                    value_template: >
-                      {{ states(v_weekday_mode) == v_mode_fast_label }}
+                    value_template: "{{ not v_weekday_soft_mode }}"
                 sequence:
                   - alias: "Быстрое пробуждение (будни)"
                     sequence:
@@ -325,8 +313,7 @@ action:
               # Мягкое пробуждение (выходные)
               - conditions:
                   - condition: template
-                    value_template: >
-                      {{ states(v_weekend_mode) == v_mode_soft_label }}
+                    value_template: "{{ v_weekend_soft_mode }}"
                 sequence:
                   - alias: "Мягкое пробуждение (выходные)"
                     sequence:
@@ -370,8 +357,7 @@ action:
               # Быстрое пробуждение (выходные)
               - conditions:
                   - condition: template
-                    value_template: >
-                      {{ states(v_weekend_mode) == v_mode_fast_label }}
+                    value_template: "{{ not v_weekend_soft_mode }}"
                 sequence:
                   - alias: "Быстрое пробуждение (выходные)"
                     sequence:
@@ -401,10 +387,8 @@ action:
       - conditions:
           - condition: trigger
             id: blinds_close_fixed
-          # Только если НЕ режим по солнцу
-          - condition: state
-            entity_id: !input blinds_sun_mode
-            state: "off"
+          - condition: template
+            value_template: "{{ not v_close_blinds_use_sun }}"
         sequence:
           - service: cover.close_cover
             target:
@@ -416,10 +400,8 @@ action:
       - conditions:
           - condition: trigger
             id: blinds_close_sun
-          # Только если режим по солнцу включен
-          - condition: state
-            entity_id: !input blinds_sun_mode
-            state: "on"
+          - condition: template
+            value_template: "{{ v_close_blinds_use_sun }}"
         sequence:
           - service: cover.close_cover
             target:
