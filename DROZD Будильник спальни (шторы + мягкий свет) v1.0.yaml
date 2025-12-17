@@ -1,0 +1,420 @@
+blueprint:
+  name: "DROZD Будильник спальни (шторы + мягкий свет) v1.0"
+  description: >
+    Будильник для спальни с разделением на будни и выходные.
+    Умеет поднимать шторы, включать мягкий свет, запускать разные сценарии
+    пробуждения по будням/выходным, а также опускать шторы вечером
+    по фиксированному времени или по солнцу (закат с оффсетом).
+
+  domain: automation
+  input:
+    # --- Базовые настройки ---
+    alarm_enabled:
+      name: Переключатель будильника
+      description: input_boolean, который включает/выключает будильник.
+      selector:
+        entity:
+          domain: input_boolean
+
+    weekday_time:
+      name: Время будильника (будни)
+      description: input_datetime без даты (только время) для будних дней.
+      selector:
+        entity:
+          domain: input_datetime
+
+    weekend_time:
+      name: Время будильника (выходные)
+      description: input_datetime без даты (только время) для выходных.
+      selector:
+        entity:
+          domain: input_datetime
+
+    # --- Режимы пробуждения ---
+    weekday_mode:
+      name: Режим пробуждения (будни)
+      description: input_select с вариантами сценариев пробуждения (минимум 2).
+      selector:
+        entity:
+          domain: input_select
+
+    weekend_mode:
+      name: Режим пробуждения (выходные)
+      description: input_select с вариантами сценариев пробуждения (минимум 2).
+      selector:
+        entity:
+          domain: input_select
+
+    mode_soft_label:
+      name: Название опции "мягкое пробуждение"
+      description: >
+        Значение из input_select, соответствующее мягкому пробуждению
+        (например: "Мягкое пробуждение").
+      default: "Мягкое пробуждение"
+      selector:
+        text:
+
+    mode_fast_label:
+      name: Название опции "быстрое пробуждение"
+      description: >
+        Значение из input_select, соответствующее быстрому пробуждению
+        (например: "Быстрое пробуждение").
+      default: "Быстрое пробуждение"
+      selector:
+        text:
+
+    # --- Свет и шторы ---
+    bedroom_light:
+      name: Свет в спальне
+      description: Диммируемый светильник/лампа для мягкого пробуждения.
+      selector:
+        entity:
+          domain: light
+
+    bedroom_cover:
+      name: Шторы / жалюзи спальни
+      description: Сущность cover для подъёма/опускания штор.
+      selector:
+        entity:
+          domain: cover
+
+    bedroom_switch:
+      name: Дополнительный выключатель (опционально)
+      description: Например, бра или розетка. Можно не указывать.
+      default: ""
+      selector:
+        entity:
+          domain: switch
+          multiple: false
+          include_entities: []
+
+    # --- Параметры "мягкого" пробуждения ---
+    soft_start_brightness:
+      name: Начальная яркость (мягкое пробуждение), %
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 50
+          unit_of_measurement: "%"
+          mode: slider
+
+    soft_mid_brightness:
+      name: Средняя яркость (мягкое пробуждение), %
+      default: 30
+      selector:
+        number:
+          min: 10
+          max: 80
+          unit_of_measurement: "%"
+          mode: slider
+
+    soft_final_brightness:
+      name: Итоговая яркость (мягкое пробуждение), %
+      default: 60
+      selector:
+        number:
+          min: 30
+          max: 100
+          unit_of_measurement: "%"
+          mode: slider
+
+    soft_step_delay:
+      name: Пауза между шагами (мягкое пробуждение), мин
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 30
+          unit_of_measurement: "мин"
+          mode: slider
+
+    # --- Вечер: опускание штор ---
+    blinds_close_fixed_time:
+      name: Время опускания штор (фиксированное)
+      description: input_datetime (только время) для вечернего закрытия штор.
+      selector:
+        entity:
+          domain: input_datetime
+
+    blinds_sun_mode:
+      name: Режим "шторы по солнцу"
+      description: input_boolean, включает использование заката вместо фиксированного времени.
+      selector:
+        entity:
+          domain: input_boolean
+
+    blinds_sunset_offset:
+      name: Оффсет от заката для опускания штор
+      description: >
+        Формат HH:MM:SS. Отрицательное значение - до заката,
+        положительное - после (пример: "-00:20:00" - за 20 минут до заката).
+      default: "-00:20:00"
+      selector:
+        text:
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  v_alarm_enabled: !input alarm_enabled
+  v_weekday_time: !input weekday_time
+  v_weekend_time: !input weekend_time
+  v_weekday_mode: !input weekday_mode
+  v_weekend_mode: !input weekend_mode
+  v_mode_soft_label: !input mode_soft_label
+  v_mode_fast_label: !input mode_fast_label
+
+  v_light: !input bedroom_light
+  v_cover: !input bedroom_cover
+  v_switch: !input bedroom_switch
+
+  v_soft_start_brightness: !input soft_start_brightness
+  v_soft_mid_brightness: !input soft_mid_brightness
+  v_soft_final_brightness: !input soft_final_brightness
+  v_soft_step_delay: !input soft_step_delay
+
+  v_blinds_fixed_time: !input blinds_close_fixed_time
+  v_blinds_sun_mode: !input blinds_sun_mode
+  v_blinds_sunset_offset: !input blinds_sunset_offset
+
+trigger:
+  # Будильник: будни
+  - id: weekday_alarm
+    platform: time
+    at: !input weekday_time
+
+  # Будильник: выходные
+  - id: weekend_alarm
+    platform: time
+    at: !input weekend_time
+
+  # Опускание штор по фиксированному времени
+  - id: blinds_close_fixed
+    platform: time
+    at: !input blinds_close_fixed_time
+
+  # Опускание штор по солнцу (закат + оффсет)
+  - id: blinds_close_sun
+    platform: sun
+    event: sunset
+    offset: !input blinds_sunset_offset
+
+condition: []
+
+action:
+  - choose:
+      # -------------------------
+      # 1. Будильник: будние дни
+      # -------------------------
+      - conditions:
+          - condition: trigger
+            id: weekday_alarm
+          - condition: state
+            entity_id: !input alarm_enabled
+            state: "on"
+          - condition: time
+            weekday:
+              - mon
+              - tue
+              - wed
+              - thu
+              - fri
+        sequence:
+          - choose:
+              # Мягкое пробуждение (будни)
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ states(v_weekday_mode) == v_mode_soft_label }}
+                sequence:
+                  - alias: "Мягкое пробуждение (будни)"
+                    sequence:
+                      # 1. Низкая яркость
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ v_light }}"
+                        data:
+                          brightness_pct: "{{ v_soft_start_brightness | int }}"
+                          transition: 30
+
+                      # 2. Пауза и средняя яркость
+                      - delay:
+                          minutes: "{{ v_soft_step_delay | int }}"
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ v_light }}"
+                        data:
+                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+
+                      # 3. Пауза и итоговая яркость
+                      - delay:
+                          minutes: "{{ v_soft_step_delay | int }}"
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ v_light }}"
+                        data:
+                          brightness_pct: "{{ v_soft_final_brightness | int }}"
+                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+
+                      # 4. Поднимаем шторы
+                      - service: cover.open_cover
+                        target:
+                          entity_id: "{{ v_cover }}"
+
+                      # 5. Опционально включаем выключатель
+                      - if:
+                          - condition: template
+                            value_template: "{{ v_switch != '' }}"
+                        then:
+                          - service: switch.turn_on
+                            target:
+                              entity_id: "{{ v_switch }}"
+
+              # Быстрое пробуждение (будни)
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ states(v_weekday_mode) == v_mode_fast_label }}
+                sequence:
+                  - alias: "Быстрое пробуждение (будни)"
+                    sequence:
+                      - service: cover.open_cover
+                        target:
+                          entity_id: "{{ v_cover }}"
+
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ v_light }}"
+                        data:
+                          brightness_pct: 80
+                          transition: 10
+
+                      - if:
+                          - condition: template
+                            value_template: "{{ v_switch != '' }}"
+                        then:
+                          - service: switch.turn_on
+                            target:
+                              entity_id: "{{ v_switch }}"
+            default: []
+
+      # -------------------------
+      # 2. Будильник: выходные
+      # -------------------------
+      - conditions:
+          - condition: trigger
+            id: weekend_alarm
+          - condition: state
+            entity_id: !input alarm_enabled
+            state: "on"
+          - condition: time
+            weekday:
+              - sat
+              - sun
+        sequence:
+          - choose:
+              # Мягкое пробуждение (выходные)
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ states(v_weekend_mode) == v_mode_soft_label }}
+                sequence:
+                  - alias: "Мягкое пробуждение (выходные)"
+                    sequence:
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ v_light }}"
+                        data:
+                          brightness_pct: "{{ v_soft_start_brightness | int }}"
+                          transition: 30
+
+                      - delay:
+                          minutes: "{{ v_soft_step_delay | int }}"
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ v_light }}"
+                        data:
+                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+
+                      - delay:
+                          minutes: "{{ v_soft_step_delay | int }}"
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ v_light }}"
+                        data:
+                          brightness_pct: "{{ v_soft_final_brightness | int }}"
+                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+
+                      - service: cover.open_cover
+                        target:
+                          entity_id: "{{ v_cover }}"
+
+                      - if:
+                          - condition: template
+                            value_template: "{{ v_switch != '' }}"
+                        then:
+                          - service: switch.turn_on
+                            target:
+                              entity_id: "{{ v_switch }}"
+
+              # Быстрое пробуждение (выходные)
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ states(v_weekend_mode) == v_mode_fast_label }}
+                sequence:
+                  - alias: "Быстрое пробуждение (выходные)"
+                    sequence:
+                      - service: cover.open_cover
+                        target:
+                          entity_id: "{{ v_cover }}"
+
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ v_light }}"
+                        data:
+                          brightness_pct: 80
+                          transition: 10
+
+                      - if:
+                          - condition: template
+                            value_template: "{{ v_switch != '' }}"
+                        then:
+                          - service: switch.turn_on
+                            target:
+                              entity_id: "{{ v_switch }}"
+            default: []
+
+      # -------------------------
+      # 3. Опускание штор по фиксированному времени
+      # -------------------------
+      - conditions:
+          - condition: trigger
+            id: blinds_close_fixed
+          # Только если НЕ режим по солнцу
+          - condition: state
+            entity_id: !input blinds_sun_mode
+            state: "off"
+        sequence:
+          - service: cover.close_cover
+            target:
+              entity_id: "{{ v_cover }}"
+
+      # -------------------------
+      # 4. Опускание штор по солнцу
+      # -------------------------
+      - conditions:
+          - condition: trigger
+            id: blinds_close_sun
+          # Только если режим по солнцу включен
+          - condition: state
+            entity_id: !input blinds_sun_mode
+            state: "on"
+        sequence:
+          - service: cover.close_cover
+            target:
+              entity_id: "{{ v_cover }}"
+    default: []
