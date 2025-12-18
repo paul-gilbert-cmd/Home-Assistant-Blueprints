@@ -19,10 +19,6 @@ blueprint:
         – автоматическое закрытие штор в заданное время,
         – либо привязка к закату выбранного sun‑сенсора с настраиваемым оффсетом.
 
-    Идеально подходит для тех, кто хочет превратить пробуждение
-    в комфортный и предсказуемый ритуал с плавным светом и автоматическими шторами,
-    не перегружая систему лишними помощниками и сложными настройками.
-
   domain: automation
 
   input:
@@ -84,7 +80,7 @@ blueprint:
         Если включено — сначала шторы, задержка, потом свет.
         Если выключено — сначала свет, задержка, потом шторы.
         Флажок влияет только если и свет, и шторы включены.
-      default: false
+      default: true
       selector:
         boolean:
 
@@ -92,7 +88,7 @@ blueprint:
       name: Задержка между шторами и светом, сек
       description: >
         Применяется, когда используются и свет, и шторы.
-      default: 120
+      default: 45
       selector:
         number:
           min: 0
@@ -102,7 +98,7 @@ blueprint:
 
     # --- Устройства ---
     bedroom_light:
-      name: Свет в спальне (лампа)
+      name: Свет
       description: >
         Диммируемая лампа/светильник.
       selector:
@@ -133,7 +129,7 @@ blueprint:
     # --- Параметры мягкого пробуждения ---
     soft_start_brightness:
       name: Начальная яркость (мягкое пробуждение), %
-      default: 5
+      default: 20
       selector:
         number:
           min: 1
@@ -143,7 +139,7 @@ blueprint:
 
     soft_mid_brightness:
       name: Средняя яркость (мягкое пробуждение), %
-      default: 30
+      default: 40
       selector:
         number:
           min: 10
@@ -153,7 +149,7 @@ blueprint:
 
     soft_final_brightness:
       name: Итоговая яркость (мягкое пробуждение), %
-      default: 60
+      default: 100
       selector:
         number:
           min: 30
@@ -163,7 +159,7 @@ blueprint:
 
     soft_step_delay:
       name: Пауза между шагами (мягкое пробуждение), мин
-      default: 3
+      default: 1
       selector:
         number:
           min: 1
@@ -175,7 +171,7 @@ blueprint:
     close_blinds_use_sun:
       name: Опускать шторы по солнцу
       description: >
-        Если включено — закрываем шторы по времени заката выбранного сенсора + оффсет.
+        Если включено — закрываем шторы по "солнцу" (сенсор ниже).
         Если выключено — по фиксированному времени.
       default: true
       selector:
@@ -185,28 +181,18 @@ blueprint:
       name: Время опускания штор (фиксированное)
       description: >
         Используется, если опция "опускать по солнцу" выключена.
-      default: "22:30:00"
+      default: "20:00:00"
       selector:
         time:
 
-    sun_sensor:
-      name: Сенсор солнца
+    sun_time_sensor:
+      name: Сенсор времени заката/закрытия штор
       description: >
-        Любой сенсор с атрибутом next_setting (обычно sun.sun или кастомный).
-        Используется для вычисления времени заката.
+        Любой sensor, от которого нужно закрывать шторы.
+      default: ""
       selector:
         entity:
-          domain: sun
-
-    blinds_sunset_offset:
-      name: Оффсет от заката для опускания штор
-      description: >
-        Формат HH:MM:SS.
-        Отрицательное значение — до заката, положительное — после.
-        Пример: "-00:20:00" — за 20 минут до заката.
-      default: "-00:20:00"
-      selector:
-        text:
+          domain: sensor
 
 mode: restart
 max_exceeded: silent
@@ -234,22 +220,7 @@ variables:
 
   v_close_blinds_use_sun: !input close_blinds_use_sun
   v_blinds_fixed_time: !input blinds_fixed_time
-  v_sun_sensor: !input sun_sensor
-  v_blinds_sunset_offset: !input blinds_sunset_offset
-
-  # ВНИМАНИЕ: блок ниже временно закомментирован для отладки.
-  # Когда убедимся, что будильник и фиксированное закрытие штор работают,
-  # можно будет вернуть расчёт времени по солнцу и соответствующий триггер/экшен.
-  #
-  # # Время закрытия по солнцу, вычисляемое на сегодня
-  # v_blinds_sun_time: >-
-  #   {% set setting = state_attr(v_sun_sensor, 'next_setting') %}
-  #   {% if setting is not none %}
-  #     {% set t = as_datetime(setting) + (strptime(v_blinds_sunset_offset, '%H:%M:%S') - strptime('00:00:00', '%H:%M:%S')) %}
-  #     {{ t.astimezone(now().tzinfo).strftime('%H:%M:%S') }}
-  #   {% else %}
-  #     22:00:00
-  #   {% endif %}
+  v_sun_time_sensor: !input sun_time_sensor
 
 trigger:
   # Будильник: будни
@@ -267,10 +238,10 @@ trigger:
     platform: time
     at: !input blinds_fixed_time
 
-  # Опускание штор по солнцу (через вычисленное время) — ОТКЛЮЧЕНО ДЛЯ ОТЛАДКИ
-  # - id: blinds_close_sun
-  #   platform: time
-  #   at: "{{ v_blinds_sun_time }}"
+  # Опускание штор по "солнцу" (по выбранному сенсору)
+  - id: blinds_close_sun
+    platform: state
+    entity_id: !input sun_time_sensor
 
 condition: []
 
@@ -769,19 +740,23 @@ action:
                   entity_id: "{{ v_cover }}"
 
       # -------------------------
-      # 4. Опускание штор по солнцу — ВРЕМЕННО ОТКЛЮЧЕНО
+      # 4. Опускание штор по "солнцу"
       # -------------------------
-      # - conditions:
-      #     - condition: trigger
-      #       id: blinds_close_sun
-      #     - condition: template
-      #       value_template: "{{ v_close_blinds_use_sun }}"
-      #   sequence:
-      #     - if:
-      #         - condition: template
-      #           value_template: "{{ v_use_blinds }}"
-      #       then:
-      #         - service: cover.close_cover
-      #           target:
-      #             entity_id: "{{ v_cover }}"
+      - conditions:
+          - condition: trigger
+            id: blinds_close_sun
+          - condition: template
+            value_template: "{{ v_close_blinds_use_sun }}"
+          # при необходимости можно ограничить по конкретному состоянию сенсора:
+          # - condition: state
+          #   entity_id: !input sun_time_sensor
+          #   state: "on"
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ v_use_blinds }}"
+            then:
+              - service: cover.close_cover
+                target:
+                  entity_id: "{{ v_cover }}"
     default: []
