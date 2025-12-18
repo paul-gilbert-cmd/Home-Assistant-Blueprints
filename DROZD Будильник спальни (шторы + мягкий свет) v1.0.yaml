@@ -237,36 +237,40 @@ variables:
   v_sun_sensor: !input sun_sensor
   v_blinds_sunset_offset: !input blinds_sunset_offset
 
-  # Время закрытия по солнцу, вычисляемое на сегодня
-  v_blinds_sun_time: >-
-    {% set setting = state_attr(v_sun_sensor, 'next_setting') %}
-    {% if setting is not none %}
-      {% set t = as_datetime(setting) + (strptime(v_blinds_sunset_offset, '%H:%M:%S') - strptime('00:00:00', '%H:%M:%S')) %}
-      {{ t.astimezone(now().tzinfo).strftime('%H:%M:%S') }}
-    {% else %}
-      22:00:00
-    {% endif %}
+  # ВНИМАНИЕ: блок ниже временно закомментирован для отладки.
+  # Когда убедимся, что будильник и фиксированное закрытие штор работают,
+  # можно будет вернуть расчёт времени по солнцу и соответствующий триггер/экшен.
+  #
+  # # Время закрытия по солнцу, вычисляемое на сегодня
+  # v_blinds_sun_time: >-
+  #   {% set setting = state_attr(v_sun_sensor, 'next_setting') %}
+  #   {% if setting is not none %}
+  #     {% set t = as_datetime(setting) + (strptime(v_blinds_sunset_offset, '%H:%M:%S') - strptime('00:00:00', '%H:%M:%S')) %}
+  #     {{ t.astimezone(now().tzinfo).strftime('%H:%M:%S') }}
+  #   {% else %}
+  #     22:00:00
+  #   {% endif %}
 
 trigger:
   # Будильник: будни
   - id: weekday_alarm
     platform: time
-    at: "{{ v_weekday_time }}"
+    at: !input weekday_time
 
   # Будильник: выходные
   - id: weekend_alarm
     platform: time
-    at: "{{ v_weekend_time }}"
+    at: !input weekend_time
 
   # Опускание штор по фиксированному времени
   - id: blinds_close_fixed
     platform: time
-    at: "{{ v_blinds_fixed_time }}"
+    at: !input blinds_fixed_time
 
-  # Опускание штор по солнцу (через вычисленное время)
-  - id: blinds_close_sun
-    platform: time
-    at: "{{ v_blinds_sun_time }}"
+  # Опускание штор по солнцу (через вычисленное время) — ОТКЛЮЧЕНО ДЛЯ ОТЛАДКИ
+  # - id: blinds_close_sun
+  #   platform: time
+  #   at: "{{ v_blinds_sun_time }}"
 
 condition: []
 
@@ -765,19 +769,19 @@ action:
                   entity_id: "{{ v_cover }}"
 
       # -------------------------
-      # 4. Опускание штор по солнцу
+      # 4. Опускание штор по солнцу — ВРЕМЕННО ОТКЛЮЧЕНО
       # -------------------------
-      - conditions:
-          - condition: trigger
-            id: blinds_close_sun
-          - condition: template
-            value_template: "{{ v_close_blinds_use_sun }}"
-        sequence:
-          - if:
-              - condition: template
-                value_template: "{{ v_use_blinds }}"
-            then:
-              - service: cover.close_cover
-                target:
-                  entity_id: "{{ v_cover }}"
+      # - conditions:
+      #     - condition: trigger
+      #       id: blinds_close_sun
+      #     - condition: template
+      #       value_template: "{{ v_close_blinds_use_sun }}"
+      #   sequence:
+      #     - if:
+      #         - condition: template
+      #           value_template: "{{ v_use_blinds }}"
+      #       then:
+      #         - service: cover.close_cover
+      #           target:
+      #             entity_id: "{{ v_cover }}"
     default: []
