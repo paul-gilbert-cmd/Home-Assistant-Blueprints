@@ -1,713 +1,762 @@
 blueprint:
-  name: "DROZD light 2 sensors + door v1.4"
+  name: "DROZD Будильник спальни (шторы + мягкий свет) v1.0"
   description: >
-    Умное освещение на базе двух типов датчиков — движения и присутствия,
-    с дополнительным учётом датчика двери и флага занятости комнаты
-    по принципу «шершень в коробке».
+    Умный будильник для спальни с поддержкой будней и выходных,
+    мягкого и быстрого сценария пробуждения, управлением светом и шторами,
+    а также автоматическим закрытием штор по закату или по фиксированному времени.
 
-    - Основные возможности:
-      - Автоматическое включение света по любому из выбранных датчиков.
-      - Гибкое авто-выключение по таймауту:
-        - отдельные таймауты для дня и ночи;
-        - выключение строго по одному "главному" датчику,
-          чтобы избежать случайного выключения света.
-      - Поддержка сцен:
-        - отдельные дневная и ночная сцены;
-        - сцены применяются один раз при первом включении после смены режима;
-        - при желании сцена может применяться сразу при переходе день/ночь.
-      - Умный режим день/ночь:
-        - переключение по сенсорам солнца (опционально);
-        - переключение по фиксированному времени;
-        - режим работы выбирается: только по времени, только по сенсорам
-          или оба варианта одновременно.
-      - Продуманная работа с ручным управлением:
-        - раздельные таймауты для ручного включения днём и ночью;
-        - отсчёт таймаута начинается только после того, как датчик перестал
-          видеть движение/присутствие;
-        - опция "Авто-выключение ручного включения":
-          если отключена, то свет, включённый вручную, не будет выключен автоматикой.
-      - Учёт двери и занятости комнаты:
-        - опциональный датчик двери;
-        - опциональный флаг занятости комнаты (вспомогательный переключатель);
-        - при закрытой двери и флаге «занято» свет не гаснет по таймаутам;
-        - при открытии двери и исчезновении движения свет может быть погашен;
-        - логика максимально приближена к принципу «шершень в коробке».
+    Возможности:
+    • Раздельные настройки для будней (пн–пт) и выходных (сб–вс).
+    • Два режима пробуждения: мягкий рассвет с постепенным увеличением яркости
+      или быстрое пробуждение с ярким светом.
+    • Отдельное управление освещением и шторами:
+        – можно включать только свет, только шторы или оба элемента вместе;
+        – гибкий порядок: сначала шторы, затем свет, или наоборот;
+        – настраиваемая задержка между открытием штор и включением света.
+    • Поддержка дополнительного реле/розетки:
+        – сначала подаётся питание (switch), затем управляется свет (light).
+    • Вечерний сценарий:
+        – автоматическое закрытие штор в заданное время,
+        – либо привязка к закату выбранного sun‑сенсора с настраиваемым оффсетом.
 
   domain: automation
 
   input:
-    motion_sensors:
-      name: "Датчики движения/присутствия"
+    # --- Время будильника ---
+    weekday_time:
+      name: Время будильника (будни)
+      description: >
+        понедельник–пятница
+      default: "07:00:00"
+      selector:
+        time:
+
+    weekend_time:
+      name: Время будильника (выходные)
+      description: >
+        суббота–воскресенье
+      default: "09:30:00"
+      selector:
+        time:
+
+    # --- Режим пробуждения ---
+    weekday_soft_mode:
+      name: Мягкое пробуждение в будни
+      description: >
+        Если включено — в будни мягкое пробуждение, иначе быстрое.
+      default: true
+      selector:
+        boolean:
+
+    weekend_soft_mode:
+      name: Мягкое пробуждение в выходные
+      description: >
+        Если включено — в выходные мягкое пробуждение, иначе быстрое.
+      default: true
+      selector:
+        boolean:
+
+    # --- Включаемость света и штор ---
+    use_light:
+      name: Управлять светом
+      description: >
+        Если выключено — все действия со светом будут пропущены.
+      default: true
+      selector:
+        boolean:
+
+    use_blinds:
+      name: Управлять шторами
+      description: >
+        Если выключено — все действия со шторами будут пропущены.
+      default: true
+      selector:
+        boolean:
+
+    # Порядок: сначала шторы, потом свет или наоборот
+    blinds_first:
+      name: Сначала шторы, потом свет
+      description: >
+        Если включено — сначала шторы, задержка, потом свет.
+        Если выключено — сначала свет, задержка, потом шторы.
+        Влияет только если и свет, и шторы включены.
+      default: false
+      selector:
+        boolean:
+
+    delay_between_blinds_and_light:
+      name: Задержка между шторами и светом, сек
+      description: >
+        Применяется, когда используются и свет, и шторы.
+      default: 45
+      selector:
+        number:
+          min: 0
+          max: 600
+          unit_of_measurement: "сек"
+          mode: slider
+
+    # --- Устройства ---
+    bedroom_light:
+      name: Свет
+      description: >
+        Диммируемая лампа/светильник.
       selector:
         entity:
-          domain: binary_sensor
-          multiple: true
+          domain: light
 
-    single_off_sensor:
-      name: "Датчик, по которому проверяется отсутствие движения для выключения"
-      description: "Свет будет выключаться по таймауту только если этот датчик в состоянии off"
+    bedroom_cover:
+      name: Шторы / жалюзи
+      description: >
+        Мотор для подъёма/опускания штор.
       selector:
         entity:
-          domain: binary_sensor
+          domain: cover
 
-    door_sensor:
-      name: "Датчик двери (опционально)"
-      description: "Используется для более точного определения присутствия в комнате"
+    bedroom_switch:
+      name: Выключатель света (опционально)
+      description: >
+        Выключатель/реле, который подает питание на лампу.
+        Если указано, он включается перед действиями со светом.
       default: ""
-      selector:
-        entity:
-          domain: binary_sensor
-          multiple: false
-
-    target_entities:
-      name: "Целевые свет/выключатели"
-      selector:
-        target:
-          entity:
-            domain:
-              - light
-              - switch
-
-    manual_entities:
-      name: "Сущности для отслеживания ручного включения"
       selector:
         entity:
           domain:
             - light
             - switch
-          multiple: true
-
-    night_scene_pending_flag:
-      name: "Флаг ожидания ночной сцены (вспомогательный переключатель)"
-      selector:
-        entity:
-          domain: input_boolean
-
-    day_scene_pending_flag:
-      name: "Флаг ожидания дневной сцены (вспомогательный переключатель)"
-      selector:
-        entity:
-          domain: input_boolean
-
-    room_occupied_flag:
-      name: "Флаг занятости комнаты (вспомогательный переключатель, опционально)"
-      description: "Если указан, в нём будет отслеживаться, есть ли кто-то в комнате"
-      default: ""
-      selector:
-        entity:
-          domain: input_boolean
           multiple: false
-          
-    room_occupied_reset_timeout:
-      name: "Таймаут сброса занятости при тишине (сек)"
-      description: "Через сколько секунд после отсутствия движения считать, что туалет свободен, если дверь не закрыта."
-      default: 120
+
+    # --- Параметры мягкого пробуждения ---
+    soft_start_brightness:
+      name: Начальная яркость (мягкое пробуждение), %
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 50
+          unit_of_measurement: "%"
+          mode: slider
+
+    soft_mid_brightness:
+      name: Средняя яркость (мягкое пробуждение), %
+      default: 500
       selector:
         number:
           min: 10
-          max: 3600
-          unit_of_measurement: seconds
-          mode: box
-          
-    room_occupied_hard_reset_timeout:
-      name: "Жёсткий таймаут сброса занятости (сек)"
-      description: "Максимальное время без движения, после которого туалет считается свободным при любых условиях."
-      default: 600
+          max: 80
+          unit_of_measurement: "%"
+          mode: slider
+
+    soft_final_brightness:
+      name: Итоговая яркость (мягкое пробуждение), %
+      default: 100
       selector:
         number:
-          min: 60
-          max: 7200
-          unit_of_measurement: seconds
-          mode: box      
-          
-    scene_apply_delay:
-      name: "Время ожидания перед применением сцены (сек)"
-      description: "Сколько ждать между включением света и применением сцены."
-      default: 2
+          min: 30
+          max: 100
+          unit_of_measurement: "%"
+          mode: slider
+
+    soft_step_delay:
+      name: Пауза между шагами (мягкое пробуждение), мин
+      default: 3
       selector:
         number:
-          min: 0
-          max: 60
-          unit_of_measurement: seconds
-          mode: box
+          min: 1
+          max: 30
+          unit_of_measurement: "мин"
+          mode: slider
 
-    day_scene:
-      name: "Дневная сцена (только при ПЕРВОМ включении)"
-      selector:
-        entity:
-          domain: scene
-
-    night_scene:
-      name: "Ночная сцена (только при ПЕРВОМ включении)"
-      selector:
-        entity:
-          domain: scene
-
-    apply_scene_on_mode_change:
-      name: "Применять сцену сразу при переходе режима"
+    # --- Вечер: опускание штор ---
+    close_blinds_use_sun:
+      name: Опускать шторы по солнцу
+      description: >
+        Если включено — закрываем шторы по "солнцу" (сенсор ниже).
+        Если выключено — по фиксированному времени.
       default: true
       selector:
-        boolean: {}
+        boolean:
 
-    day_timeout_seconds:
-      name: "Таймаут выключения днём (сек)"
-      default: 45
+    blinds_fixed_time:
+      name: Время опускания штор (фиксированное)
+      description: >
+        Используется, если опция "опускать по солнцу" выключена.
+      default: "20:00:00"
       selector:
-        number:
-          min: 1
-          max: 86400
-          unit_of_measurement: seconds
-          mode: box
+        time:
 
-    night_timeout_seconds:
-      name: "Таймаут выключения ночью (сек)"
-      default: 15
-      selector:
-        number:
-          min: 1
-          max: 86400
-          unit_of_measurement: seconds
-          mode: box
-
-    # Сенсоры времени смены день/ночь (ОПЦИОНАЛЬНО)
-    sun_night_start_sensor:
-      name: "Сенсор начала ночи (опционально)"
+    sun_time_sensor:
+      name: Сенсор времени заката/закрытия штор
+      description: >
+        Любой sensor, от которого нужно закрывать шторы.
       default: ""
       selector:
         entity:
           domain: sensor
-          multiple: false
-
-    sun_night_end_sensor:
-      name: "Сенсор начала дня (опционально)"
-      default: ""
-      selector:
-        entity:
-          domain: sensor
-          multiple: false
-
-    # Явное время начала и окончания ночи
-    night_start_time:
-      name: "Время начала ночного режима"
-      description: "Если выбран источник 'Фиксированное время' или 'Оба', ночной режим включится в это время."
-      default: "23:30:00"
-      selector:
-        time: {}
-
-    night_end_time:
-      name: "Время окончания ночного режима"
-      description: "Если выбран источник 'Фиксированное время' или 'Оба', ночной режим выключится в это время (начало дня)."
-      default: "07:00:00"
-      selector:
-        time: {}
-
-    night_mode_source:
-      name: "Источник смены день/ночь"
-      description: "Что управляет переключением ночного режима"
-      default: "fixed_time"
-      selector:
-        select:
-          options:
-            - label: "Сенсоры солнца"
-              value: "sun_sensors"
-            - label: "Фиксированное время"
-              value: "fixed_time"
-            - label: "И сенсоры, и время"
-              value: "both"
-          mode: dropdown
-
-    enable_day_auto_on:
-      name: "Авто-включение днём"
-      default: true
-      selector:
-        boolean: {}
-
-    enable_day_auto_off:
-      name: "Авто-выключение днём"
-      default: true
-      selector:
-        boolean: {}
-
-    enable_night_auto_on:
-      name: "Авто-включение ночью"
-      default: true
-      selector:
-        boolean: {}
-
-    enable_night_auto_off:
-      name: "Авто-выключение ночью"
-      default: true
-      selector:
-        boolean: {}
-
-    manual_on_auto_off_enabled:
-      name: "Авто-выключение ручного включения"
-      default: true
-      selector:
-        boolean: {}
-
-    manual_on_day_timeout_seconds:
-      name: "Таймаут ручного включения днём (сек)"
-      default: 1200
-      selector:
-        number:
-          min: 1
-          max: 86400
-          unit_of_measurement: seconds
-          mode: box
-
-    manual_on_night_timeout_seconds:
-      name: "Таймаут ручного включения ночью (сек)"
-      default: 600
-      selector:
-        number:
-          min: 1
-          max: 86400
-          unit_of_measurement: seconds
-          mode: box
-
-variables:
-  motion_sensors: !input motion_sensors
-  single_off_sensor: !input single_off_sensor
-  door_sensor: !input door_sensor
-  target_entities: !input target_entities
-  manual_entities: !input manual_entities
-
-  night_flag: !input night_scene_pending_flag
-  day_flag: !input day_scene_pending_flag
-  room_occupied_flag: !input room_occupied_flag
-
-  scene_apply_delay: !input scene_apply_delay
-
-  day_scene: !input day_scene
-  night_scene: !input night_scene
-  apply_scene_on_mode_change: !input apply_scene_on_mode_change
-
-  day_timeout_seconds: !input day_timeout_seconds
-  night_timeout_seconds: !input night_timeout_seconds
-  manual_on_day_timeout_seconds: !input manual_on_day_timeout_seconds
-  manual_on_night_timeout_seconds: !input manual_on_night_timeout_seconds
-
-  sun_night_start_sensor: !input sun_night_start_sensor
-  sun_night_end_sensor: !input sun_night_end_sensor
-
-  night_mode_source: !input night_mode_source
-
-  enable_day_auto_on: !input enable_day_auto_on
-  enable_day_auto_off: !input enable_day_auto_off
-  enable_night_auto_on: !input enable_night_auto_on
-  enable_night_auto_off: !input enable_night_auto_off
-  manual_on_auto_off_enabled: !input manual_on_auto_off_enabled
-
-  # Дверь и занятость
-  door_sensor_defined: "{{ (door_sensor | string) not in ['', 'none', 'unknown'] }}"
-  room_occupied_flag_defined: "{{ (room_occupied_flag | string) not in ['', 'none', 'unknown'] }}"
-  room_occupied_reset_timeout: !input room_occupied_reset_timeout
-  room_occupied_hard_reset_timeout: !input room_occupied_hard_reset_timeout
-  
-  # Считаем, что binary_sensor двери: on = открыта, off = закрыта
-  door_is_open: "{{ door_sensor_defined and is_state(door_sensor, 'on') }}"
-  door_is_closed: "{{ door_sensor_defined and is_state(door_sensor, 'off') }}"
-
-  room_occupied: "{{ room_occupied_flag_defined and is_state(room_occupied_flag, 'on') }}"
-  room_free: "{{ room_occupied_flag_defined and is_state(room_occupied_flag, 'off') }}"
-
-  # Логика режимов через helpers (флаги) + проверка по фиксированному времени
-  current_time: "{{ now().strftime('%H:%M:%S') }}"
-  night_start_time_var: !input night_start_time
-  night_end_time_var: !input night_end_time
-
-  # Ночь по времени: если используется fixed_time или both
-  is_night_by_time: >-
-    {% if night_mode_source in ['fixed_time', 'both'] %}
-      {% if night_start_time_var < night_end_time_var %}
-        {{ current_time >= night_start_time_var or current_time < night_end_time_var }}
-      {% else %}
-        {{ current_time >= night_start_time_var or current_time < night_end_time_var }}
-      {% endif %}
-    {% else %}
-      false
-    {% endif %}
-
-  is_night: "{{ states(night_flag) == 'on' or is_night_by_time }}"
-  is_day: "{{ not is_night }}"
-  motion_timeout_seconds: "{{ night_timeout_seconds if is_night else day_timeout_seconds }}"
-  manual_timeout_seconds: "{{ manual_on_night_timeout_seconds if is_night else manual_on_day_timeout_seconds }}"
-  allow_auto_on: "{{ enable_night_auto_on if is_night else enable_day_auto_on }}"
-  allow_auto_off: "{{ enable_night_auto_off if is_night else enable_day_auto_off }}"
-
-  # Явный запрет авто-выключения, если мы в ночном режиме и ночное авто-выключение отключено
-  block_night_auto_off: "{{ is_night and not enable_night_auto_off }}"
-
-  # проверяем ТОЛЬКО один выбранный датчик на отсутствие движения
-  single_off_sensor_is_off: "{{ is_state(single_off_sensor, 'off') }}"
-
-  # Удобные флаги для источников
-  use_sun_sensors: "{{ night_mode_source in ['sun_sensors', 'both'] }}"
-  use_fixed_time: "{{ night_mode_source in ['fixed_time', 'both'] }}"
-
-  # флаги, заданы ли сенсоры (пустая строка -> считаем не заданным)
-  has_sun_start_sensor: "{{ (sun_night_start_sensor | string) not in ['', 'none', 'unknown'] }}"
-  has_sun_end_sensor: "{{ (sun_night_end_sensor | string) not in ['', 'none', 'unknown'] }}"
 
 mode: restart
 max_exceeded: silent
 
+variables:
+  v_weekday_time: !input weekday_time
+  v_weekend_time: !input weekend_time
+
+  v_weekday_soft_mode: !input weekday_soft_mode
+  v_weekend_soft_mode: !input weekend_soft_mode
+
+  v_use_light: !input use_light
+  v_use_blinds: !input use_blinds
+  v_blinds_first: !input blinds_first
+  v_delay_between: !input delay_between_blinds_and_light
+
+  v_light: !input bedroom_light
+  v_cover: !input bedroom_cover
+  v_switch: !input bedroom_switch
+
+  v_soft_start_brightness: !input soft_start_brightness
+  v_soft_mid_brightness: !input soft_mid_brightness
+  v_soft_final_brightness: !input soft_final_brightness
+  v_soft_step_delay: !input soft_step_delay
+
+  v_close_blinds_use_sun: !input close_blinds_use_sun
+  v_blinds_fixed_time: !input blinds_fixed_time
+  v_sun_time_sensor: !input sun_time_sensor
+
 trigger:
-  - id: motion_on
-    platform: state
-    entity_id: !input motion_sensors
-    to: 'on'
-
-  - id: motion_off
-    platform: state
-    entity_id: !input motion_sensors
-    to: 'off'
-
-  # Дверь
-  - id: door_opened
-    platform: state
-    entity_id: !input door_sensor
-    to: 'on'
-
-  - id: door_closed
-    platform: state
-    entity_id: !input door_sensor
-    to: 'off'
-
-  # Переключение в ночной режим по сенсору (если он вообще задан)
-  - id: night_start_by_sensor
+  # Будильник: будни
+  - id: weekday_alarm
     platform: time
-    at: "{{ states(sun_night_start_sensor) }}"
+    at: !input weekday_time
 
-  # Переключение в дневной режим по сенсору (если он вообще задан)
-  - id: night_end_by_sensor
+  # Будильник: выходные
+  - id: weekend_alarm
     platform: time
-    at: "{{ states(sun_night_end_sensor) }}"
+    at: !input weekend_time
 
-  # Переключение в ночной режим по фиксированному времени
-  - id: night_start_by_time
+  # Опускание штор по фиксированному времени
+  - id: blinds_close_fixed
     platform: time
-    at: !input night_start_time
+    at: !input blinds_fixed_time
 
-  # Переключение в дневной режим по фиксированному времени
-  - id: night_end_by_time
-    platform: time
-    at: !input night_end_time
-
-  - id: manual_on
+  # Опускание штор по "солнцу" (по выбранному сенсору)
+  - id: blinds_close_sun
     platform: state
-    entity_id: !input manual_entities
-    to: 'on'
+    entity_id: !input sun_time_sensor
 
 condition: []
 
 action:
   - choose:
-
-      # 0) Переход в ночь по СЕНСОРУ (источник разрешён И сенсор задан)
+      # -------------------------
+      # 1. Будильник: будние дни
+      # -------------------------
       - conditions:
           - condition: trigger
-            id: night_start_by_sensor
-          - condition: template
-            value_template: "{{ use_sun_sensors and has_sun_start_sensor }}"
+            id: weekday_alarm
+          - condition: time
+            weekday:
+              - mon
+              - tue
+              - wed
+              - thu
+              - fri
         sequence:
-          - service: input_boolean.turn_on
-            target:
-              entity_id: "{{ night_flag }}"
-          - service: input_boolean.turn_off
-            target:
-              entity_id: "{{ day_flag }}"
           - choose:
+              # Мягкое пробуждение (будни)
               - conditions:
                   - condition: template
-                    value_template: "{{ apply_scene_on_mode_change and night_scene is not none }}"
+                    value_template: "{{ v_weekday_soft_mode }}"
                 sequence:
-                  - service: scene.turn_on
-                    target:
-                      entity_id: "{{ night_scene }}"
+                  - alias: "Мягкое пробуждение (будни)"
+                    sequence:
+                      # если и свет, и шторы включены
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ v_use_light and v_use_blinds }}"
+                            sequence:
+                              # вариант: сначала шторы, потом свет
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ v_blinds_first }}"
+                                    sequence:
+                                      # ШТОРЫ
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                                      # ЗАДЕРЖКА
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      # СВЕТ (мягкий)
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                          transition: 30
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                  # вариант: сначала свет, потом шторы
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ not v_blinds_first }}"
+                                    sequence:
+                                      # СВЕТ (мягкий)
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                          transition: 30
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      # ЗАДЕРЖКА
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      # ШТОРЫ
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                        default:
+                          # если только свет
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_light and not v_use_blinds }}"
+                            then:
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ v_switch != '' }}"
+                                then:
+                                  - service: switch.turn_on
+                                    target:
+                                      entity_id: "{{ v_switch }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                  transition: 30
+                              - delay:
+                                  minutes: "{{ v_soft_step_delay | int }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                  transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                              - delay:
+                                  minutes: "{{ v_soft_step_delay | int }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                  transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                          # если только шторы
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_blinds and not v_use_light }}"
+                            then:
+                              - service: cover.open_cover
+                                target:
+                                  entity_id: "{{ v_cover }}"
 
-      # 0.1) Переход в ночь по ВРЕМЕНИ (источник разрешён)
-      - conditions:
-          - condition: trigger
-            id: night_start_by_time
-          - condition: template
-            value_template: "{{ use_fixed_time }}"
-        sequence:
-          - service: input_boolean.turn_on
-            target:
-              entity_id: "{{ night_flag }}"
-          - service: input_boolean.turn_off
-            target:
-              entity_id: "{{ day_flag }}"
-          - choose:
+              # Быстрое пробуждение (будни)
               - conditions:
                   - condition: template
-                    value_template: "{{ apply_scene_on_mode_change and night_scene is not none }}"
+                    value_template: "{{ not v_weekday_soft_mode }}"
                 sequence:
-                  - service: scene.turn_on
-                    target:
-                      entity_id: "{{ night_scene }}"
-
-      # 0.2) Переход в день по СЕНСОРУ (источник разрешён И сенсор задан)
-      - conditions:
-          - condition: trigger
-            id: night_end_by_sensor
-          - condition: template
-            value_template: "{{ use_sun_sensors and has_sun_end_sensor }}"
-        sequence:
-          - service: input_boolean.turn_on
-            target:
-              entity_id: "{{ day_flag }}"
-          - service: input_boolean.turn_off
-            target:
-              entity_id: "{{ night_flag }}"
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ apply_scene_on_mode_change and day_scene is not none }}"
-                sequence:
-                  - service: scene.turn_on
-                    target:
-                      entity_id: "{{ day_scene }}"
-
-      # 0.3) Переход в день по ВРЕМЕНИ (источник разрешён)
-      - conditions:
-          - condition: trigger
-            id: night_end_by_time
-          - condition: template
-            value_template: "{{ use_fixed_time }}"
-        sequence:
-          - service: input_boolean.turn_on
-            target:
-              entity_id: "{{ day_flag }}"
-          - service: input_boolean.turn_off
-            target:
-              entity_id: "{{ night_flag }}"
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ apply_scene_on_mode_change and day_scene is not none }}"
-                sequence:
-                  - service: scene.turn_on
-                    target:
-                      entity_id: "{{ day_scene }}"
-
-      # 1) Авто-включение по движению (ЛЮБОЙ датчик)
-      - conditions:
-          - condition: trigger
-            id: motion_on
-          - condition: template
-            value_template: "{{ allow_auto_on }}"
-        sequence:
-          - service: homeassistant.turn_on
-            target: !input target_entities
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ is_night and night_scene is not none and states(night_flag) == 'on' }}"
-                sequence:
-                  - delay:
-                      seconds: "{{ scene_apply_delay | int }}"
-                  - service: scene.turn_on
-                    target:
-                      entity_id: "{{ night_scene }}"
-                  - service: input_boolean.turn_off
-                    target:
-                      entity_id: "{{ night_flag }}"
-              - conditions:
-                  - condition: template
-                    value_template: "{{ is_day and day_scene is not none and states(day_flag) == 'on' }}"
-                sequence:
-                  - delay:
-                      seconds: "{{ scene_apply_delay | int }}"
-                  - service: scene.turn_on
-                    target:
-                      entity_id: "{{ day_scene }}"
-                  - service: input_boolean.turn_off
-                    target:
-                      entity_id: "{{ day_flag }}"
+                  - alias: "Быстрое пробуждение (будни)"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ v_use_light and v_use_blinds }}"
+                            sequence:
+                              # сначала/потом по тому же флагу blinds_first
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ v_blinds_first }}"
+                                    sequence:
+                                      # ШТОРЫ
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      # СВЕТ (быстрый)
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: 80
+                                          transition: 10
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ not v_blinds_first }}"
+                                    sequence:
+                                      # СВЕТ (быстрый)
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: 80
+                                          transition: 10
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      # ШТОРЫ
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                        default:
+                          # только свет
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_light and not v_use_blinds }}"
+                            then:
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ v_switch != '' }}"
+                                then:
+                                  - service: switch.turn_on
+                                    target:
+                                      entity_id: "{{ v_switch }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: 80
+                                  transition: 10
+                          # только шторы
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_blinds and not v_use_light }}"
+                            then:
+                              - service: cover.open_cover
+                                target:
+                                  entity_id: "{{ v_cover }}"
             default: []
 
-      # 1.1) Отмечаем, что в комнате кто-то есть (по движению)
+      # -------------------------
+      # 2. Будильник: выходные
+      # -------------------------
       - conditions:
           - condition: trigger
-            id: motion_on
-          - condition: template
-            value_template: "{{ room_occupied_flag_defined }}"
-        sequence:
-          - service: input_boolean.turn_on
-            target:
-              entity_id: "{{ room_occupied_flag }}"
-      # 1.2) Включение света по открытию двери, если в комнате никого нет
-      - conditions:
-          - condition: trigger
-            id: door_opened
-          - condition: template
-            value_template: "{{ door_sensor_defined }}"
-          - condition: template
-            value_template: >
-              {{ not room_occupied_flag_defined or room_free }}
-        sequence:
-          - service: homeassistant.turn_on
-            target: !input target_entities
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ room_occupied_flag_defined }}"
-                sequence:
-                  - service: input_boolean.turn_on
-                    target:
-                      entity_id: "{{ room_occupied_flag }}"
-            default: []
-
-      # 2) Авто-выключение по таймауту — ТОЛЬКО по одному датчику
-      - conditions:
-          - condition: trigger
-            id: motion_off
-          - condition: template
-            value_template: "{{ allow_auto_off }}"
-          - condition: template
-            value_template: "{{ single_off_sensor_is_off }}"
-          # Дополнительная защита: если мы в ночном режиме и ночное авто-выключение выключено — не гасим
-          - condition: template
-            value_template: "{{ not block_night_auto_off }}"
-          # Если авто-выключение ручного включения отключено — вообще не выключаем по движению
-          - condition: template
-            value_template: "{{ manual_on_auto_off_enabled }}"
-          # Если есть логика занятости: не гасим при закрытой двери и занятости
-          - condition: template
-            value_template: >
-              {{ not room_occupied_flag_defined
-                 or not room_occupied
-                 or door_is_open }}
-        sequence:
-          - delay:
-              seconds: "{{ motion_timeout_seconds | int }}"
-          - condition: template
-            value_template: "{{ single_off_sensor_is_off }}"
-          - service: homeassistant.turn_off
-            target: !input target_entities
-      
-      # 2.1) Дверь открылась -> проверяем отсутствие движения и освобождаем комнату
-      - conditions:
-          - condition: trigger
-            id: door_opened
-          - condition: template
-            value_template: "{{ door_sensor_defined }}"
-          - condition: template
-            value_template: "{{ room_occupied_flag_defined }}"
-        sequence:
-          # Небольшая задержка, чтобы датчик движения успел отработать
-          - delay:
-              seconds: 2
-          # Если основного движения уже нет — можно освободить
-          - condition: template
-            value_template: "{{ single_off_sensor_is_off }}"
-          - service: input_boolean.turn_off
-            target:
-              entity_id: "{{ room_occupied_flag }}"
-
-      # 2.2) Сброс занятости по тишине
-      - conditions:
-          - condition: trigger
-            id: motion_off
-          - condition: template
-            value_template: "{{ room_occupied_flag_defined }}"
-        sequence:
-          # 2.2.1 МЯГКИЙ сброс: короткий таймаут + открытая дверь
-          - delay:
-              seconds: "{{ room_occupied_reset_timeout | int }}"
-
-          # Если за это время по основному датчику так и не было движения
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ single_off_sensor_is_off }}"
-                  # И дверь не закрыта "герметично"
-                  - condition: template
-                    value_template: "{{ not door_sensor_defined or door_is_open }}"
-                sequence:
-                  # Сбрасываем флаг занятости
-                  - service: input_boolean.turn_off
-                    target:
-                      entity_id: "{{ room_occupied_flag }}"
-            default: []
-
-          # 2.2.2 ЖЁСТКИЙ сброс: если всё равно ничего не происходило слишком долго
-          - delay:
-              seconds: "{{ (room_occupied_hard_reset_timeout | int) - (room_occupied_reset_timeout | int) if (room_occupied_hard_reset_timeout | int) > (room_occupied_reset_timeout | int) else 0 }}"
-
-          - condition: template
-            value_template: "{{ single_off_sensor_is_off }}"
-
-          # Независимо от двери: если так долго нет движения — считаем туалет свободным
-          - service: input_boolean.turn_off
-            target:
-              entity_id: "{{ room_occupied_flag }}"
-
-      # 3) Ручное включение
-      - conditions:
-          - condition: trigger
-            id: manual_on
-          - condition: template
-            value_template: "{{ manual_on_auto_off_enabled }}"
-          - condition: template
-            value_template: "{{ manual_entities | count > 0 }}"
-          - condition: template
-            value_template: >
-              {{ (trigger.to_state.context and trigger.to_state.context.user_id) is not none }}
+            id: weekend_alarm
+          - condition: time
+            weekday:
+              - sat
+              - sun
         sequence:
           - choose:
+              # Мягкое пробуждение (выходные)
               - conditions:
                   - condition: template
-                    value_template: "{{ is_night and night_scene is not none and states(night_flag) == 'on' }}"
+                    value_template: "{{ v_weekend_soft_mode }}"
                 sequence:
-                  - delay:
-                      seconds: "{{ scene_apply_delay | int }}"
-                  - service: scene.turn_on
-                    target:
-                      entity_id: "{{ night_scene }}"
-                  - service: input_boolean.turn_off
-                    target:
-                      entity_id: "{{ night_flag }}"
+                  - alias: "Мягкое пробуждение (выходные)"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ v_use_light and v_use_blinds }}"
+                            sequence:
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ v_blinds_first }}"
+                                    sequence:
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                          transition: 30
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ not v_blinds_first }}"
+                                    sequence:
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                          transition: 30
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      - delay:
+                                          minutes: "{{ v_soft_step_delay | int }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                          transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                        default:
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_light and not v_use_blinds }}"
+                            then:
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ v_switch != '' }}"
+                                then:
+                                  - service: switch.turn_on
+                                    target:
+                                      entity_id: "{{ v_switch }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_start_brightness | int }}"
+                                  transition: 30
+                              - delay:
+                                  minutes: "{{ v_soft_step_delay | int }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_mid_brightness | int }}"
+                                  transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                              - delay:
+                                  minutes: "{{ v_soft_step_delay | int }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: "{{ v_soft_final_brightness | int }}"
+                                  transition: "{{ (v_soft_step_delay | int) * 60 }}"
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_blinds and not v_use_light }}"
+                            then:
+                              - service: cover.open_cover
+                                target:
+                                  entity_id: "{{ v_cover }}"
+
+              # Быстрое пробуждение (выходные)
               - conditions:
                   - condition: template
-                    value_template: "{{ is_day and day_scene is not none and states(day_flag) == 'on' }}"
+                    value_template: "{{ not v_weekend_soft_mode }}"
                 sequence:
-                  - delay:
-                      seconds: "{{ scene_apply_delay | int }}"
-                  - service: scene.turn_on
-                    target:
-                      entity_id: "{{ day_scene }}"
-                  - service: input_boolean.turn_off
-                    target:
-                      entity_id: "{{ day_flag }}"
+                  - alias: "Быстрое пробуждение (выходные)"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ v_use_light and v_use_blinds }}"
+                            sequence:
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ v_blinds_first }}"
+                                    sequence:
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: 80
+                                          transition: 10
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ not v_blinds_first }}"
+                                    sequence:
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ v_switch != '' }}"
+                                        then:
+                                          - service: switch.turn_on
+                                            target:
+                                              entity_id: "{{ v_switch }}"
+                                      - service: light.turn_on
+                                        target:
+                                          entity_id: "{{ v_light }}"
+                                        data:
+                                          brightness_pct: 80
+                                          transition: 10
+                                      - delay:
+                                          seconds: "{{ v_delay_between | int }}"
+                                      - service: cover.open_cover
+                                        target:
+                                          entity_id: "{{ v_cover }}"
+                        default:
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_light and not v_use_blinds }}"
+                            then:
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ v_switch != '' }}"
+                                then:
+                                  - service: switch.turn_on
+                                    target:
+                                      entity_id: "{{ v_switch }}"
+                              - service: light.turn_on
+                                target:
+                                  entity_id: "{{ v_light }}"
+                                data:
+                                  brightness_pct: 80
+                                  transition: 10
+                          - if:
+                              - condition: template
+                                value_template: "{{ v_use_blinds and not v_use_light }}"
+                            then:
+                              - service: cover.open_cover
+                                target:
+                                  entity_id: "{{ v_cover }}"
             default: []
 
-          # Ждём окончания движения/присутствия по основному датчику выключения
-          - wait_for_trigger:
-              - platform: state
-                entity_id: !input single_off_sensor
-                to: "off"
-            timeout:
-              hours: 24
-            continue_on_timeout: false
-
-          # Отсчёт таймаута от момента, когда движение прекратилось
-          - delay:
-              seconds: "{{ manual_timeout_seconds | int }}"
-
-          # Если к концу таймаута датчик всё ещё не видит движения
-          # и нет "занятости с закрытой дверью" — выключаем свет
+      # -------------------------
+      # 3. Опускание штор по фиксированному времени
+      # -------------------------
+      - conditions:
+          - condition: trigger
+            id: blinds_close_fixed
           - condition: template
-            value_template: "{{ single_off_sensor_is_off }}"
-          - condition: template
-            value_template: >
-              {{ not room_occupied_flag_defined
-                 or not room_occupied
-                 or door_is_open }}
-          - service: homeassistant.turn_off
-            target: !input target_entities
+            value_template: "{{ not v_close_blinds_use_sun }}"
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ v_use_blinds }}"
+            then:
+              - service: cover.close_cover
+                target:
+                  entity_id: "{{ v_cover }}"
 
+      # -------------------------
+      # 4. Опускание штор по "солнцу"
+      # -------------------------
+      - conditions:
+          - condition: trigger
+            id: blinds_close_sun
+          - condition: template
+            value_template: "{{ v_close_blinds_use_sun }}"
+          # при необходимости можно ограничить по конкретному состоянию сенсора:
+          # - condition: state
+          #   entity_id: !input sun_time_sensor
+          #   state: "on"
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ v_use_blinds }}"
+            then:
+              - service: cover.close_cover
+                target:
+                  entity_id: "{{ v_cover }}"
     default: []
