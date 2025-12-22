@@ -529,16 +529,19 @@ action:
                       entity_id: "{{ day_flag }}"
             default: []
 
-      # 1.1) Отмечаем, что в комнате кто-то есть (по движению)
+      # 1.1) Отмечаем, что в комнате кто-то есть (по движению ВНУТРИ)
       - conditions:
           - condition: trigger
             id: motion_on
           - condition: template
             value_template: "{{ room_occupied_flag_defined }}"
+          - condition: template
+            value_template: "{{ trigger.entity_id == single_off_sensor }}"
         sequence:
           - service: input_boolean.turn_on
             target:
               entity_id: "{{ room_occupied_flag }}"
+              
       # 1.2) Включение света по открытию двери, если в комнате никого нет
       - conditions:
           - condition: trigger
@@ -551,15 +554,8 @@ action:
         sequence:
           - service: homeassistant.turn_on
             target: !input target_entities
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ room_occupied_flag_defined }}"
-                sequence:
-                  - service: input_boolean.turn_on
-                    target:
-                      entity_id: "{{ room_occupied_flag }}"
-            default: []
+          # БОЛЬШЕ НЕ МЕНЯЕМ room_occupied_flag ЗДЕСЬ
+          # Человек помечается "занятым" только по реальному движению (1.1)
 
       # 2) Авто-выключение по таймауту — ТОЛЬКО по одному датчику
       - conditions:
@@ -589,8 +585,7 @@ action:
           - service: homeassistant.turn_off
             target: !input target_entities
       
-      # 2.1) Дверь открылась -> проверяем отсутствие движения и освобождаем комнату,
-      #      НО только если уже нет движения (центр) и флаг занятости был включён.
+      # 2.1) Дверь открылась -> если в комнате тихо, считаем её свободной
       - conditions:
           - condition: trigger
             id: door_opened
@@ -599,14 +594,20 @@ action:
           - condition: template
             value_template: "{{ room_occupied_flag_defined }}"
           - condition: template
-            value_template: "{{ room_occupied }}"   # было занято
+            value_template: "{{ room_occupied }}"
         sequence:
-          # Небольшая задержка, чтобы датчик движения успел отработать
+          # Даём чуть времени всем датчикам "переобновиться"
           - delay:
               seconds: 2
-          # Если основного движения уже нет — считаем, что человек вышел
+          # Проверяем: НЕТ движения НИ на одном датчике
           - condition: template
-            value_template: "{{ single_off_sensor_is_off }}"
+            value_template: >
+              {{ expand(motion_sensors)
+                 | map(attribute='state')
+                 | list
+                 | select('eq', 'on')
+                 | list
+                 | length == 0 }}
           - service: input_boolean.turn_off
             target:
               entity_id: "{{ room_occupied_flag }}"
