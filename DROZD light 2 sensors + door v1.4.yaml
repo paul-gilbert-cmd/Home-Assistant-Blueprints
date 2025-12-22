@@ -589,7 +589,8 @@ action:
           - service: homeassistant.turn_off
             target: !input target_entities
       
-      # 2.1) Дверь открылась -> проверяем отсутствие движения и освобождаем комнату
+      # 2.1) Дверь открылась -> проверяем отсутствие движения и освобождаем комнату,
+      #      НО только если уже нет движения (центр) и флаг занятости был включён.
       - conditions:
           - condition: trigger
             id: door_opened
@@ -597,11 +598,13 @@ action:
             value_template: "{{ door_sensor_defined }}"
           - condition: template
             value_template: "{{ room_occupied_flag_defined }}"
+          - condition: template
+            value_template: "{{ room_occupied }}"   # было занято
         sequence:
           # Небольшая задержка, чтобы датчик движения успел отработать
           - delay:
               seconds: 2
-          # Если основного движения уже нет — можно освободить
+          # Если основного движения уже нет — считаем, что человек вышел
           - condition: template
             value_template: "{{ single_off_sensor_is_off }}"
           - service: input_boolean.turn_off
